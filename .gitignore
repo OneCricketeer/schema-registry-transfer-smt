@@ -1,0 +1,29 @@
+.idea/
+*.iml
+
+*.class
+
+*.log
+
+*.jar
+*.zip
+*.tar.gz
+*.rar
+
+# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
+hs_err_pid*
+
+### macOS ###
+.DS_Store
+
+# Icon must end with two \r
+Icon
+
+# Thumbnails
+._*
+
+### Maven ###
+target/
+dependency-reduced-pom.xml
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
