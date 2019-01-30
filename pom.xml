@@ -7,6 +7,38 @@
     <groupId>cricket.jmoore</groupId>
     <artifactId>schema-registry-transfer-smt</artifactId>
     <version>0.1.0</version>
+    <name>schema-registry-transfer-smt</name>
+    <description>
+        A Kafka Connect Transform for copying Confluent Schema Registry schemas between different registries.
+    </description>
+    <url>https://github.com/cricket007/schema-registry-transfer-smt</url>
+    <inceptionYear>2019</inceptionYear>
+    <licenses>
+        <license>
+            <name>Apache License 2.0</name>
+            <url>https://github.com/cricket007/schema-registry-transfer-smt/LICENSE</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+    <developers>
+        <developer>
+            <id>cricket007</id>
+            <name>Jordan Moore</name>
+            <url>https://github.com/cricket007</url>
+            <roles>
+                <role>Committer</role>
+            </roles>
+        </developer>
+    </developers>
+    <scm>
+        <connection>scm:git:https://github.com/cricket007/schema-registry-transfer-smt.git</connection>
+        <developerConnection>scm:git:git@github.com:cricket007/schema-registry-transfer-smt.git</developerConnection>
+        <url>https://github.com/cricket007/schema-registry-transfer-smt</url>
+    </scm>
+    <issueManagement>
+        <system>github</system>
+        <url>https://github.com/cricket007/schema-registry-transfer-smt/issues</url>
+    </issueManagement>
 
     <repositories>
         <repository>
@@ -192,6 +224,28 @@
                         </goals>
                     </execution>
                 </executions>
+            </plugin>
+            <plugin>
+                <groupId>io.confluent</groupId>
+                <artifactId>kafka-connect-maven-plugin</artifactId>
+                <version>0.11.1</version>
+                <configuration>
+                    <title>Avro Schema Transformer</title>
+                    <!--<documentationUrl>https://jmoore.cricket/kafka-connect-documentation/</documentationUrl>-->
+                    <kafkaConnectApi>false</kafkaConnectApi>
+                    <singleMessageTransforms>true</singleMessageTransforms>
+                    <componentTypes>
+                        <componentType>transform</componentType>
+                    </componentTypes>
+                    <ownerUsername>cricket007</ownerUsername>
+                    <tags>
+                        <tag>avro</tag>
+                    </tags>
+                    <supportUrl>${project.issueManagement.url}</supportUrl>
+                    <ownerType>user</ownerType>
+                    <supportSummary>Support provided through community involvement.</supportSummary>
+                    <confluentControlCenterIntegration>true</confluentControlCenterIntegration>
+                </configuration>
             </plugin>
         </plugins>
     </build>
