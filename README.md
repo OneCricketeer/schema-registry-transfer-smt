@@ -78,8 +78,21 @@ Configuration Parameter | Default | Description
 **schema.capacity** | 100 | Capacity of schemas that can be cached in each `CachedSchemaRegistryClient`
 
 
+## Subject Renaming
 
+Renaming of a subject can be done with the `RegexRouter` Transform **before** this one.
 
+Example Configuration
+
+```properties
+transforms=TopicRename,AvroSchemaTransfer
+
+transforms.TopicRename.type=org.apache.kafka.connect.transforms.RegexRouter
+transforms.TopicRename.regex=(.*)
+transforms.TopicRename.replacement=replica.$1
+
+transforms.AvroSchemaTransfer.type=...
+```
 
 <!-- Links -->
   [smt]: https://docs.confluent.io/current/connect/concepts.html#connect-transforms
