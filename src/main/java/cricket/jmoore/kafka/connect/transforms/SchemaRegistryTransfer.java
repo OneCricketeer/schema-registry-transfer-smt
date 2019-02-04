@@ -102,6 +102,9 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
         Object updatedKey = key;
         Optional<Integer> destKeySchemaId;
         if (includeKeys) {
+            if (key == null) {
+                throw new ConnectException("Unable to copy record key schemas for null keys. Set '" + ConfigName.INCLUDE_KEYS + "=false'.");
+            }
             if ((keySchema != null && keySchema.type() == Schema.BYTES_SCHEMA.type()) ||
                     key instanceof byte[]) {
                 ByteBuffer b = ByteBuffer.wrap((byte[]) key);
