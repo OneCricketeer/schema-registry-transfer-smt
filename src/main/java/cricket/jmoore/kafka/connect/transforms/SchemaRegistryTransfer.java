@@ -124,16 +124,18 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
 
         Object updatedValue;
         Optional<Integer> destValueSchemaId;
-        if (value == null) {
-            throw new ConnectException("Unable to extract schema information from null record value.");
-        }
         if ((valueSchema != null && valueSchema.type() == Schema.BYTES_SCHEMA.type()) ||
                 value instanceof byte[]) {
-            ByteBuffer b = ByteBuffer.wrap((byte[]) value);
-            destValueSchemaId = copySchema(b, topic, false);
-            b.putInt(1, destValueSchemaId.orElseThrow(()
-                    -> new ConnectException("Transform failed. Unable to update record schema id. (isKey=false)")));
-            updatedValue = b.array();
+            if(value!=null) {
+                ByteBuffer b = ByteBuffer.wrap((byte[]) value);
+                destValueSchemaId = copySchema(b, topic, false);
+                b.putInt(1, destValueSchemaId.orElseThrow(()
+                        -> new ConnectException("Transform failed. Unable to update record schema id. (isKey=false)")));
+                updatedValue = b.array();
+            } else {
+                log.trace("Cannot extract schema details from null-value record.");
+                updatedValue = value;
+            }
         } else {
             throw new ConnectException("Transform failed. Record value does not have a byte[] schema.");
         }
