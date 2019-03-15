@@ -58,6 +58,8 @@
         <jackson.version>2.9.7</jackson.version>
         <jackson.asl.version>1.9.13</jackson.asl.version>
 
+        <spotless.version>1.19.0</spotless.version>
+
         <shade.prefix>cricket.jmoore</shade.prefix>
     </properties>
 
@@ -68,6 +70,13 @@
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
             <version>1.7.25</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.kafka</groupId>
+            <artifactId>kafka-clients</artifactId>
+            <version>${kafka.version}${confluent.patch.version}</version>
             <scope>provided</scope>
         </dependency>
 
@@ -246,6 +255,34 @@
                     <supportSummary>Support provided through community involvement.</supportSummary>
                     <confluentControlCenterIntegration>true</confluentControlCenterIntegration>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>com.diffplug.spotless</groupId>
+                <artifactId>spotless-maven-plugin</artifactId>
+                <version>${spotless.version}</version>
+                <configuration>
+                    <java>
+                        <licenseHeader>
+                            <content>/* Licensed under Apache-2.0 */</content>
+                        </licenseHeader>
+                        <!--<googleJavaFormat>-->
+                        <!--<version>1.7</version>-->
+                        <!--<style>GOOGLE</style>-->
+                        <!--</googleJavaFormat>-->
+                        <removeUnusedImports/>
+                        <importOrder>
+                            <order>java,org,io.confluent,com,cricket.jmoore,</order>
+                        </importOrder>
+                    </java>
+                </configuration>
+                <executions>
+                    <execution>
+                        <phase>process-sources</phase>
+                        <goals>
+                            <goal>apply</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
