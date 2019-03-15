@@ -40,15 +40,15 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
     public static final Integer SCHEMA_CAPACITY_CONFIG_DEFAULT = 100;
     public static final String SRC_SCHEMA_REGISTRY_CONFIG_DOC = "A list of addresses for the Schema Registry to copy from. The consumer's Schema Registry.";
     public static final String DEST_SCHEMA_REGISTRY_CONFIG_DOC = "A list of addresses for the Schema Registry to copy to. The producer's Schema Registry.";
-    public static final String INCLUDE_KEYS_CONFIG_DOC = "Whether or not to copy message key schemas between registries.";
-    public static final Boolean INCLUDE_KEYS_CONFIG_DEFAULT = true;
+    public static final String TRANSFER_KEYS_CONFIG_DOC = "Whether or not to copy message key schemas between registries.";
+    public static final Boolean TRANSFER_KEYS_CONFIG_DEFAULT = true;
     public static final String INCLUDE_HEADERS_CONFIG_DOC = "Whether or not to preserve the Kafka Connect Record headers.";
     public static final Boolean INCLUDE_HEADERS_CONFIG_DEFAULT = true;
 
     private CachedSchemaRegistryClient sourceSchemaRegistryClient;
     private CachedSchemaRegistryClient destSchemaRegistryClient;
     private SubjectNameStrategy<org.apache.avro.Schema> subjectNameStrategy;
-    private boolean includeKeys, includeHeaders;
+    private boolean transferKeys, includeHeaders;
 
     // caches from the source registry to the destination registry
     private Cache<Integer, SchemaAndId> schemaCache;
@@ -61,7 +61,7 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
                 .define(ConfigName.SRC_SCHEMA_REGISTRY_URL, ConfigDef.Type.LIST, ConfigDef.NO_DEFAULT_VALUE, new NonEmptyListValidator(), ConfigDef.Importance.HIGH, SRC_SCHEMA_REGISTRY_CONFIG_DOC)
                 .define(ConfigName.DEST_SCHEMA_REGISTRY_URL, ConfigDef.Type.LIST, ConfigDef.NO_DEFAULT_VALUE, new NonEmptyListValidator(), ConfigDef.Importance.HIGH, DEST_SCHEMA_REGISTRY_CONFIG_DOC)
                 .define(ConfigName.SCHEMA_CAPACITY, ConfigDef.Type.INT, SCHEMA_CAPACITY_CONFIG_DEFAULT, ConfigDef.Importance.LOW, SCHEMA_CAPACITY_CONFIG_DOC)
-                .define(ConfigName.INCLUDE_KEYS, ConfigDef.Type.BOOLEAN, INCLUDE_KEYS_CONFIG_DEFAULT, ConfigDef.Importance.MEDIUM, INCLUDE_KEYS_CONFIG_DOC)
+                .define(ConfigName.TRANSFER_KEYS, ConfigDef.Type.BOOLEAN, TRANSFER_KEYS_CONFIG_DEFAULT, ConfigDef.Importance.MEDIUM, TRANSFER_KEYS_CONFIG_DOC)
                 .define(ConfigName.INCLUDE_HEADERS, ConfigDef.Type.BOOLEAN, INCLUDE_HEADERS_CONFIG_DEFAULT, ConfigDef.Importance.MEDIUM, INCLUDE_HEADERS_CONFIG_DOC)
         ;
         // TODO: Other properties might be useful, e.g. the Subject Strategies
@@ -84,7 +84,7 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
         this.sourceSchemaRegistryClient = new CachedSchemaRegistryClient(sourceUrls, schemaCapacity);
         this.destSchemaRegistryClient = new CachedSchemaRegistryClient(destUrls, schemaCapacity);
 
-        this.includeKeys = config.getBoolean(ConfigName.INCLUDE_KEYS);
+        this.transferKeys = config.getBoolean(ConfigName.TRANSFER_KEYS);
         this.includeHeaders = config.getBoolean(ConfigName.INCLUDE_HEADERS);
 
         // TODO: Make the Strategy configurable, may be different for src and dest
@@ -97,44 +97,49 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
         final String topic = r.topic();
 
         // Transcribe the key's schema id
-        Object key = r.key();
-        Schema keySchema = r.keySchema();
+        final Object key = r.key();
+        final Schema keySchema = r.keySchema();
 
         Object updatedKey = key;
         Optional<Integer> destKeySchemaId;
-        if (includeKeys) {
-            if (key == null) {
-                throw new ConnectException("Unable to copy record key schemas for null keys. Set '" + ConfigName.INCLUDE_KEYS + "=false'.");
-            }
-            if ((keySchema != null && keySchema.type() == Schema.BYTES_SCHEMA.type()) ||
-                    key instanceof byte[]) {
-                ByteBuffer b = ByteBuffer.wrap((byte[]) key);
-                destKeySchemaId = copySchema(b, topic, true);
-                b.putInt(1, destKeySchemaId.orElseThrow(()
-                        -> new ConnectException("Transform failed. Unable to update record schema id. (isKey=true)")));
-                updatedKey = b.array();
+        if (transferKeys) {
+            if ((keySchema != null && (keySchema.type() == Schema.BYTES_SCHEMA.type()
+                    || keySchema.type() == Schema.OPTIONAL_BYTES_SCHEMA.type()))
+                    || key instanceof byte[]) {
+                if (key == null) {
+                    log.trace("Passing through null record key.");
+                } else {
+                    ByteBuffer b = ByteBuffer.wrap((byte[]) key);
+                    destKeySchemaId = copySchema(b, topic, true);
+                    b.putInt(1, destKeySchemaId.orElseThrow(()
+                            -> new ConnectException("Transform failed. Unable to update record schema id. (isKey=true)")));
+                    updatedKey = b.array();
+                }
             } else {
                 throw new ConnectException("Transform failed. Record key does not have a byte[] schema.");
             }
+        } else {
+            log.trace("Skipping record key translation. {} has been to false. Keys will be passed as-is."
+                    , ConfigName.TRANSFER_KEYS);
         }
 
         // Transcribe the value's schema id
-        Object value = r.value();
-        Schema valueSchema = r.valueSchema();
+        final Object value = r.value();
+        final Schema valueSchema = r.valueSchema();
 
-        Object updatedValue;
+        Object updatedValue = value;
         Optional<Integer> destValueSchemaId;
-        if ((valueSchema != null && valueSchema.type() == Schema.BYTES_SCHEMA.type()) ||
-                value instanceof byte[]) {
-            if(value!=null) {
+        if ((valueSchema != null && (valueSchema.type() == Schema.BYTES_SCHEMA.type()
+                || valueSchema.type() == Schema.OPTIONAL_BYTES_SCHEMA.type()))
+                || value instanceof byte[]) {
+            if (value == null) {
+                log.trace("Passing through null record value");
+            } else {
                 ByteBuffer b = ByteBuffer.wrap((byte[]) value);
                 destValueSchemaId = copySchema(b, topic, false);
                 b.putInt(1, destValueSchemaId.orElseThrow(()
                         -> new ConnectException("Transform failed. Unable to update record schema id. (isKey=false)")));
                 updatedValue = b.array();
-            } else {
-                log.trace("Cannot extract schema details from null-value record.");
-                updatedValue = value;
             }
         } else {
             throw new ConnectException("Transform failed. Record value does not have a byte[] schema.");
@@ -143,13 +148,13 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
 
         return includeHeaders ?
                 r.newRecord(topic, r.kafkaPartition(),
-                        keySchema, includeKeys ? updatedKey : r.key(),
+                        keySchema, updatedKey,
                         valueSchema, updatedValue,
                         r.timestamp(),
                         r.headers())
                 :
                 r.newRecord(topic, r.kafkaPartition(),
-                        keySchema, includeKeys ? updatedKey : r.key(),
+                        keySchema, updatedKey,
                         valueSchema, updatedValue,
                         r.timestamp());
     }
@@ -208,7 +213,7 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
         String SRC_SCHEMA_REGISTRY_URL = "src." + AbstractKafkaAvroSerDeConfig.SCHEMA_REGISTRY_URL_CONFIG;
         String DEST_SCHEMA_REGISTRY_URL = "dest." + AbstractKafkaAvroSerDeConfig.SCHEMA_REGISTRY_URL_CONFIG;
         String SCHEMA_CAPACITY = "schema.capacity";
-        String INCLUDE_KEYS = "include.message.keys";
+        String TRANSFER_KEYS = "transfer.message.keys";
         String INCLUDE_HEADERS = "include.message.headers";
     }
 
