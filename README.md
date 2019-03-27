@@ -73,7 +73,7 @@ Distributed Kafka Connect configuration section
 
 Configuration Parameter | Default | Description
 ----------------------- | ------- | -----------
-**include.message.keys** | true | Indicates whether Avro schemas from message keys in source records should be copied to the destination Registry.
+**transfer.message.keys** | true | Indicates whether Avro schemas from message keys in source records should be copied to the destination Registry.
 **include.message.headers** | true | Indicates whether message headers from source records should be preserved after the transform.
 **schema.capacity** | 100 | Capacity of schemas that can be cached in each `CachedSchemaRegistryClient`
 
