@@ -1,11 +1,13 @@
 Schema Registry Transfer SMT
 ============================
 
-A [Kafka Connect Single Message Transformation (SMT)][smt] that reads the serialized [wire format header][wire-format] of Confluent's `KafkaAvroSerializer`, performs a lookup against a source [Confluent Schema Registry][schema-registry] for the ID in the message, and registers that schema into a destination Registry for that topic/subject under a new ID.
+A [Kafka Connect Single Message Transformation (SMT)][smt] that reads the serialized [wire format header][wire-format] of Confluent's `KafkaAvroSerializer`, performs a lookup against a source [Confluent Schema Registry][schema-registry] for the ID in the message, and registers that schema into a destination Registry for that topic/subject under a new ID. 
 
-To be used where it is not feasible to make the destination Schema Registry as a follower to the source Registry, or when migrating topics to a new cluster.
+To be used where it is not feasible to make the destination Schema Registry as a follower to the source Registry, or when migrating topics to a new cluster. 
 
 > _Requires that the Kafka Connect tasks can reach both Schema Registries._
+
+This transform doesn't mirror the contents of the `_schemas` topic, so therefore each registry can be completely isolated from one another. As a side-effect of this, the subject configurations that might be applied to the `/config` endpoint in the source registry are not copied to the destination. In other words, you might get schema registration errors if using differing compatibility levels on the registries. Just a heads-up. 
 
 Example Kafka Connectors where this could be applied.
 
