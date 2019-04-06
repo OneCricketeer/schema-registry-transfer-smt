@@ -33,7 +33,9 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
     public static final String OVERVIEW_DOC = "Inspect the Confluent KafkaAvroSerializer's wire-format header to copy schemas from one Schema Registry to another.";
     private static final Logger log = LoggerFactory.getLogger(SchemaRegistryTransfer.class);
 
-    private static final byte MAGIC_BYTE = 0x0;
+    private static final byte MAGIC_BYTE = (byte) 0x0;
+    // wire-format is magic byte + an integer, then data
+    private static final short WIRE_FORMAT_PREFIX_LENGTH = 1 + (Integer.SIZE / Byte.SIZE);
 
     public static final ConfigDef CONFIG_DEF;
     public static final String SCHEMA_CAPACITY_CONFIG_DOC = "The maximum amount of schemas to be stored for each Schema Registry client.";
@@ -103,13 +105,16 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
         Object updatedKey = key;
         Optional<Integer> destKeySchemaId;
         if (transferKeys) {
-            if ((keySchema != null && (keySchema.type() == Schema.BYTES_SCHEMA.type()
-                    || keySchema.type() == Schema.OPTIONAL_BYTES_SCHEMA.type()))
-                    || key instanceof byte[]) {
+            if (ConnectSchemaUtil.isBytesSchema(keySchema) || key instanceof byte[]) {
                 if (key == null) {
                     log.trace("Passing through null record key.");
                 } else {
-                    ByteBuffer b = ByteBuffer.wrap((byte[]) key);
+                    byte[] keyAsBytes = (byte[]) key;
+                    int keyByteLength = keyAsBytes.length;
+                    if (keyByteLength <= 5) {
+                        throw new SerializationException("Unexpected byte[] length " + keyByteLength + " for Avro record key.");
+                    }
+                    ByteBuffer b = ByteBuffer.wrap(keyAsBytes);
                     destKeySchemaId = copySchema(b, topic, true);
                     b.putInt(1, destKeySchemaId.orElseThrow(()
                             -> new ConnectException("Transform failed. Unable to update record schema id. (isKey=true)")));
@@ -129,13 +134,16 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
 
         Object updatedValue = value;
         Optional<Integer> destValueSchemaId;
-        if ((valueSchema != null && (valueSchema.type() == Schema.BYTES_SCHEMA.type()
-                || valueSchema.type() == Schema.OPTIONAL_BYTES_SCHEMA.type()))
-                || value instanceof byte[]) {
+        if (ConnectSchemaUtil.isBytesSchema(valueSchema) || value instanceof byte[]) {
             if (value == null) {
                 log.trace("Passing through null record value");
             } else {
-                ByteBuffer b = ByteBuffer.wrap((byte[]) value);
+                byte[] valueAsBytes = (byte[]) value;
+                int valueByteLength = valueAsBytes.length;
+                if (valueByteLength <= 5) {
+                    throw new SerializationException("Unexpected byte[] length " + valueByteLength + " for Avro record value.");
+                }
+                ByteBuffer b = ByteBuffer.wrap(valueAsBytes);
                 destValueSchemaId = copySchema(b, topic, false);
                 b.putInt(1, destValueSchemaId.orElseThrow(()
                         -> new ConnectException("Transform failed. Unable to update record schema id. (isKey=false)")));
@@ -177,12 +185,6 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
                 } catch (IOException | RestClientException e) {
                     log.error(String.format("Unable to fetch source schema for id %d.", sourceSchemaId), e);
                     throw new ConnectException(e);
-                }
-
-                if (schemaAndDestId.schema == null) {
-                    String msg = "Error getting schema from source registry. Not registering null schema with destination registry.";
-                    log.error(msg);
-                    throw new ConnectException(msg);
                 }
 
                 try {
