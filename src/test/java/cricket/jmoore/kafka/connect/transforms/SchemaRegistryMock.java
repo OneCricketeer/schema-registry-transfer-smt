@@ -5,6 +5,8 @@ import static java.net.HttpURLConnection.HTTP_NOT_FOUND;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 import org.apache.avro.Schema;
 import org.junit.jupiter.api.extension.AfterEachCallback;
@@ -17,6 +19,7 @@ import io.confluent.kafka.schemaregistry.client.CachedSchemaRegistryClient;
 import io.confluent.kafka.schemaregistry.client.MockSchemaRegistryClient;
 import io.confluent.kafka.schemaregistry.client.SchemaMetadata;
 import io.confluent.kafka.schemaregistry.client.SchemaRegistryClient;
+import io.confluent.kafka.schemaregistry.client.rest.entities.Config;
 import io.confluent.kafka.schemaregistry.client.rest.entities.SchemaString;
 import io.confluent.kafka.schemaregistry.client.rest.entities.requests.RegisterSchemaRequest;
 import io.confluent.kafka.schemaregistry.client.rest.entities.requests.RegisterSchemaResponse;
@@ -62,19 +65,22 @@ import com.google.common.collect.Iterables;
  *         assertThat(retrievedSchema).isEqualTo(keySchema);
  *     }
  * }</code></pre>
- *
+ * <p>
  * To retrieve the url of the schema registry for a Kafka Streams config, please use {@link #getUrl()}
  */
 public class SchemaRegistryMock implements BeforeEachCallback, AfterEachCallback {
     private static final String SCHEMA_REGISTRATION_PATTERN = "/subjects/[^/]+/versions";
     private static final String SCHEMA_BY_ID_PATTERN = "/schemas/ids/";
+    private static final String CONFIG_PATTERN = "/config";
     private static final int IDENTITY_MAP_CAPACITY = 1000;
     private final ListVersionsHandler listVersionsHandler = new ListVersionsHandler();
     private final GetVersionHandler getVersionHandler = new GetVersionHandler();
     private final AutoRegistrationHandler autoRegistrationHandler = new AutoRegistrationHandler();
+    private final GetConfigHandler getConfigHandler = new GetConfigHandler();
     private final WireMockServer mockSchemaRegistry = new WireMockServer(
-            WireMockConfiguration.wireMockConfig().dynamicPort()
-                    .extensions(this.autoRegistrationHandler, this.listVersionsHandler, this.getVersionHandler));
+            WireMockConfiguration.wireMockConfig().dynamicPort().extensions(
+                    this.autoRegistrationHandler, this.listVersionsHandler, this.getVersionHandler,
+                    this.getConfigHandler));
     private final SchemaRegistryClient schemaRegistryClient = new MockSchemaRegistryClient();
 
     private static final Logger log = LoggerFactory.getLogger(SchemaRegistryMock.class);
@@ -93,6 +99,8 @@ public class SchemaRegistryMock implements BeforeEachCallback, AfterEachCallback
                 .willReturn(WireMock.aResponse().withTransformers(this.autoRegistrationHandler.getName())));
         this.mockSchemaRegistry.stubFor(WireMock.get(WireMock.urlPathMatching(SCHEMA_REGISTRATION_PATTERN + "/(?:latest|\\d+)"))
                 .willReturn(WireMock.aResponse().withTransformers(this.getVersionHandler.getName())));
+        this.mockSchemaRegistry.stubFor(WireMock.get(WireMock.urlPathMatching(CONFIG_PATTERN))
+                .willReturn(WireMock.aResponse().withTransformers(this.getConfigHandler.getName())));
         this.mockSchemaRegistry.stubFor(WireMock.get(WireMock.urlPathMatching(SCHEMA_BY_ID_PATTERN + "\\d+"))
                 .willReturn(WireMock.aResponse().withStatus(HTTP_NOT_FOUND)));
     }
@@ -131,11 +139,24 @@ public class SchemaRegistryMock implements BeforeEachCallback, AfterEachCallback
         try {
             if (version instanceof String && version.equals("latest")) {
                 return this.schemaRegistryClient.getLatestSchemaMetadata(subject);
-            } else if (version instanceof Number){
+            } else if (version instanceof Number) {
                 return this.schemaRegistryClient.getSchemaMetadata(subject, ((Number) version).intValue());
             } else {
                 throw new IllegalArgumentException("Only 'latest' or integer versions are allowed");
             }
+        } catch (IOException | RestClientException e) {
+            throw new IllegalStateException("Internal error in mock schema registry client", e);
+        }
+    }
+
+    private String getCompatibility(String subject) {
+        if (subject == null) {
+            log.debug("Requesting registry base compatibility");
+        } else {
+            log.debug("Requesting compatibility for subject {}", subject);
+        }
+        try {
+            return this.schemaRegistryClient.getCompatibility(subject);
         } catch (IOException | RestClientException e) {
             throw new IllegalStateException("Internal error in mock schema registry client", e);
         }
@@ -221,6 +242,31 @@ public class SchemaRegistryMock implements BeforeEachCallback, AfterEachCallback
         @Override
         public String getName() {
             return GetVersionHandler.class.getSimpleName();
+        }
+    }
+
+    private class GetConfigHandler extends SubjectsVersioHandler {
+
+        @Override
+        protected String getSubject(Request request) {
+            List<String> parts =
+                    StreamSupport.stream(this.urlSplitter.split(request.getUrl()).spliterator(), false)
+                            .collect(Collectors.toList());
+
+            // return null when this is just /config
+            return parts.size() < 2 ? null : parts.get(1);
+        }
+
+        @Override
+        public ResponseDefinition transform(final Request request, final ResponseDefinition responseDefinition,
+                                            final FileSource files, final Parameters parameters) {
+            Config config = new Config(SchemaRegistryMock.this.getCompatibility(getSubject(request)));
+            return ResponseDefinitionBuilder.jsonResponse(config);
+        }
+
+        @Override
+        public String getName() {
+            return GetConfigHandler.class.getSimpleName();
         }
     }
 

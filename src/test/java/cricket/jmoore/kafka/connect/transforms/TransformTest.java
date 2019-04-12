@@ -14,7 +14,9 @@ import java.util.Map;
 import java.util.UUID;
 
 import org.apache.avro.SchemaBuilder;
+import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericDatumWriter;
+import org.apache.avro.generic.GenericRecordBuilder;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.io.EncoderFactory;
@@ -24,6 +26,7 @@ import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.slf4j.Logger;
@@ -32,6 +35,11 @@ import org.slf4j.LoggerFactory;
 import io.confluent.kafka.schemaregistry.client.SchemaMetadata;
 import io.confluent.kafka.schemaregistry.client.SchemaRegistryClient;
 import io.confluent.kafka.schemaregistry.client.rest.exceptions.RestClientException;
+import io.confluent.kafka.serializers.NonRecordContainer;
+
+import static org.apache.avro.Schema.Type.INT;
+import static org.apache.avro.Schema.Type.BOOLEAN;
+import static org.apache.avro.Schema.Type.STRING;
 
 @SuppressWarnings("unchecked")
 public class TransformTest {
@@ -41,7 +49,21 @@ public class TransformTest {
     public static final String TOPIC = TransformTest.class.getSimpleName();
 
     private static final byte MAGIC_BYTE = (byte) 0x0;
-    private static final int AVRO_CONTENT_OFFSET = 5;
+    public static final int ID_SIZE = Integer.SIZE / Byte.SIZE;
+    private static final int AVRO_CONTENT_OFFSET = 1 + ID_SIZE;
+    public static final org.apache.avro.Schema INT_SCHEMA = org.apache.avro.Schema.create(INT);
+    public static final org.apache.avro.Schema STRING_SCHEMA = org.apache.avro.Schema.create(STRING);
+    public static final org.apache.avro.Schema BOOLEAN_SCHEMA = org.apache.avro.Schema.create(BOOLEAN);
+    public static final org.apache.avro.Schema NAME_SCHEMA = SchemaBuilder.record("FullName")
+            .namespace("cricket.jmoore.kafka.connect.transforms").fields()
+            .requiredString("first")
+            .requiredString("last")
+            .endRecord();
+    public static final org.apache.avro.Schema NAME_SCHEMA_ALIASED = SchemaBuilder.record("FullName")
+            .namespace("cricket.jmoore.kafka.connect.transforms").fields()
+            .requiredString("first")
+            .name("surname").aliases("last").type().stringType().noDefault()
+            .endRecord();
 
     @RegisterExtension
     final SchemaRegistryMock sourceSchemaRegistry = new SchemaRegistryMock();
@@ -55,6 +77,10 @@ public class TransformTest {
     private ConnectRecord createRecord(Schema keySchema, Object key, Schema valueSchema, Object value) {
         // partition and offset aren't needed
         return new SourceRecord(null, null, TOPIC, keySchema, key, valueSchema, value);
+    }
+
+    private ConnectRecord createRecord(byte[] key, byte[] value) {
+        return createRecord(Schema.OPTIONAL_BYTES_SCHEMA, key, Schema.OPTIONAL_BYTES_SCHEMA, value);
     }
 
     private Map<String, Object> getRequiredTransformConfigs() {
@@ -79,12 +105,16 @@ public class TransformTest {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
 
         out.write(MAGIC_BYTE);
-        out.write(ByteBuffer.allocate(Integer.SIZE / Byte.SIZE).putInt(sourceId).array());
+        out.write(ByteBuffer.allocate(ID_SIZE).putInt(sourceId).array());
 
         EncoderFactory encoderFactory = EncoderFactory.get();
         BinaryEncoder encoder = encoderFactory.directBinaryEncoder(out, null);
+        Object
+                value =
+                datum instanceof NonRecordContainer ? ((NonRecordContainer) datum).getValue()
+                        : datum;
         DatumWriter<Object> writer = new GenericDatumWriter<>(schema);
-        writer.write(datum, encoder);
+        writer.write(value, encoder);
         encoder.flush();
 
         return out;
@@ -168,10 +198,10 @@ public class TransformTest {
 
         // Create bogus schema in destination so that source and destination ids differ
         log.info("Registering schema in destination registry");
-        destSchemaRegistry.registerSchema(UUID.randomUUID().toString(), true, SchemaBuilder.builder().intType());
+        destSchemaRegistry.registerSchema(UUID.randomUUID().toString(), true, INT_SCHEMA);
 
         // Create new schema for source registry
-        org.apache.avro.Schema schema = SchemaBuilder.builder().stringType();
+        org.apache.avro.Schema schema = STRING_SCHEMA;
         log.info("Registering schema in source registry");
         int sourceId = sourceSchemaRegistry.registerSchema(TOPIC, true, schema);
         final String subject = TOPIC + "-key";
@@ -189,7 +219,7 @@ public class TransformTest {
         try {
             ByteArrayOutputStream out = encodeAvroObject(schema, sourceId, "hello, world");
 
-            ConnectRecord record = createRecord(Schema.STRING_SCHEMA, out.toByteArray(), null, null);
+            ConnectRecord record = createRecord(Schema.OPTIONAL_BYTES_SCHEMA, out.toByteArray(), null, null);
 
             // check the destination has no versions for this subject
             SchemaRegistryClient destClient = destSchemaRegistry.getSchemaRegistryClient();
@@ -231,10 +261,10 @@ public class TransformTest {
 
         // Create bogus schema in destination so that source and destination ids differ
         log.info("Registering schema in destination registry");
-        destSchemaRegistry.registerSchema(UUID.randomUUID().toString(), false, SchemaBuilder.builder().intType());
+        destSchemaRegistry.registerSchema(UUID.randomUUID().toString(), false, INT_SCHEMA);
 
         // Create new schema for source registry
-        org.apache.avro.Schema schema = SchemaBuilder.builder().stringType();
+        org.apache.avro.Schema schema = STRING_SCHEMA;
         log.info("Registering schema in source registry");
         int sourceId = sourceSchemaRegistry.registerSchema(TOPIC, false, schema);
         final String subject = TOPIC + "-value";
@@ -255,9 +285,8 @@ public class TransformTest {
         try {
             ByteArrayOutputStream out = encodeAvroObject(schema, sourceId, "hello, world");
 
-            // Giving the key an optional bytes schema so transform doesn't error-out
             value = out.toByteArray();
-            ConnectRecord record = createRecord(Schema.OPTIONAL_BYTES_SCHEMA, null, Schema.STRING_SCHEMA, value);
+            ConnectRecord record = createRecord(null, value);
 
             // check the destination has no versions for this subject
             SchemaRegistryClient destClient = destSchemaRegistry.getSchemaRegistryClient();
@@ -313,11 +342,11 @@ public class TransformTest {
 
         // Create bogus schema in destination so that source and destination ids differ
         log.info("Registering schema in destination registry");
-        destSchemaRegistry.registerSchema(UUID.randomUUID().toString(), false, SchemaBuilder.builder().booleanType());
+        destSchemaRegistry.registerSchema(UUID.randomUUID().toString(), false, BOOLEAN_SCHEMA);
 
         // Create new schemas for source registry
-        org.apache.avro.Schema keySchema = SchemaBuilder.builder().intType();
-        org.apache.avro.Schema valueSchema = SchemaBuilder.builder().stringType();
+        org.apache.avro.Schema keySchema = INT_SCHEMA;
+        org.apache.avro.Schema valueSchema = STRING_SCHEMA;
         log.info("Registering schemas in source registry");
         int sourceKeyId = sourceSchemaRegistry.registerSchema(TOPIC, true, keySchema);
         final String keySubject = TOPIC + "-key";
@@ -349,7 +378,7 @@ public class TransformTest {
 
             key = keyStream.toByteArray();
             value = valueStream.toByteArray();
-            ConnectRecord record = createRecord(Schema.INT32_SCHEMA, key, Schema.STRING_SCHEMA, value);
+            ConnectRecord record = createRecord(key, value);
 
             // check the destination has no versions for this subject
             SchemaRegistryClient destClient = destSchemaRegistry.getSchemaRegistryClient();
@@ -437,5 +466,140 @@ public class TransformTest {
 
         assertEquals(record.valueSchema(), appliedRecord.valueSchema(), "value schema unchanged");
         assertNull(appliedRecord.value());
+    }
+
+    @Test
+    public void testEvolvingValueSchemaTransfer() {
+        configure(true);
+
+        // Create bogus schema in destination so that source and destination ids differ
+        log.info("Registering schema in destination registry");
+        destSchemaRegistry.registerSchema(UUID.randomUUID().toString(), false, INT_SCHEMA);
+
+        log.info("Registering schema in source registry");
+        int sourceId = sourceSchemaRegistry.registerSchema(TOPIC, false, NAME_SCHEMA);
+        int nextSourceId = sourceSchemaRegistry.registerSchema(TOPIC, false, NAME_SCHEMA_ALIASED);
+        final String subject = TOPIC + "-value";
+        assertEquals(1, sourceId, "An empty registry starts at id=1");
+        assertEquals(2, nextSourceId, "The next schema is id=2");
+
+        SchemaRegistryClient sourceClient = sourceSchemaRegistry.getSchemaRegistryClient();
+        int numSourceVersions = 0;
+        try {
+            numSourceVersions = sourceClient.getAllVersions(subject).size();
+            assertEquals(2, numSourceVersions, "the source registry subject contains the pre-registered schema");
+        } catch (IOException | RestClientException e) {
+            fail(e);
+        }
+
+        try {
+            GenericData.Record record1 = new GenericRecordBuilder(NAME_SCHEMA)
+                    .set("first", "fname")
+                    .set("last", "lname")
+                    .build();
+            ByteArrayOutputStream out = encodeAvroObject(NAME_SCHEMA, sourceId, record1);
+
+            byte[] value = out.toByteArray();
+            ConnectRecord record = createRecord(null, value);
+
+            GenericData.Record record2 = new GenericRecordBuilder(NAME_SCHEMA_ALIASED)
+                    .set("first", "fname")
+                    .set("surname", "lname")
+                    .build();
+            out = encodeAvroObject(NAME_SCHEMA_ALIASED, nextSourceId, record2);
+
+            byte[] nextValue = out.toByteArray();
+            ConnectRecord nextRecord = createRecord(null, nextValue);
+
+            // check the destination has no versions for this subject
+            SchemaRegistryClient destClient = destSchemaRegistry.getSchemaRegistryClient();
+            List<Integer> destVersions = destClient.getAllVersions(subject);
+            assertTrue(destVersions.isEmpty(), "the destination registry starts empty");
+
+            // The transform will pass for key and value with byte schemas
+            log.info("applying transformation");
+            assertDoesNotThrow(() -> smt.apply(record));
+
+            // check the value schema was copied, and the destination now has some version
+            destVersions = destClient.getAllVersions(subject);
+            assertEquals(1, destVersions.size(),
+                    "the destination registry has been updated with first schema");
+
+            log.info("applying transformation");
+            assertDoesNotThrow(() -> smt.apply(nextRecord));
+
+            destVersions = destClient.getAllVersions(subject);
+            assertEquals(numSourceVersions, destVersions.size(),
+                    "the destination registry has been updated with the second schema");
+
+        } catch (IOException | RestClientException e) {
+            fail(e);
+        }
+    }
+
+    @Test
+    @Disabled("TODO: Find scenario where a backwards compatible change cannot be undone")
+    public void testIncompatibleEvolvingValueSchemaTransfer() {
+        configure(true);
+
+        // Create bogus schema in destination so that source and destination ids differ
+        log.info("Registering schema in destination registry");
+        destSchemaRegistry.registerSchema(UUID.randomUUID().toString(), false, INT_SCHEMA);
+
+        // Create new schema for source registry
+        log.info("Registering schema in source registry");
+
+        // TODO: Figure out what these should be, where if order is flipped, destination will not accept
+        org.apache.avro.Schema schema = null;
+        org.apache.avro.Schema nextSchema = null;
+
+        int sourceId = sourceSchemaRegistry.registerSchema(TOPIC, false, schema);
+        int nextSourceId = sourceSchemaRegistry.registerSchema(TOPIC, false, nextSchema);
+        final String subject = TOPIC + "-value";
+        assertEquals(1, sourceId, "An empty registry starts at id=1");
+        assertEquals(2, nextSourceId, "The next schema is id=2");
+
+        SchemaRegistryClient sourceClient = sourceSchemaRegistry.getSchemaRegistryClient();
+        int numSourceVersions = 0;
+        try {
+            numSourceVersions = sourceClient.getAllVersions(subject).size();
+            assertEquals(2, numSourceVersions, "the source registry subject contains the pre-registered schema");
+        } catch (IOException | RestClientException e) {
+            fail(e);
+        }
+
+        try {
+            // TODO: Depending on schemas above, then build Avro records for them
+            // ensure second id is encoded first
+            ByteArrayOutputStream out = encodeAvroObject(nextSchema, nextSourceId, null);
+
+            byte[] value = out.toByteArray();
+            ConnectRecord record = createRecord(null, value);
+
+            out = encodeAvroObject(schema, sourceId, null);
+
+            byte[] nextValue = out.toByteArray();
+            ConnectRecord nextRecord = createRecord(null, nextValue);
+
+            // check the destination has no versions for this subject
+            SchemaRegistryClient destClient = destSchemaRegistry.getSchemaRegistryClient();
+            List<Integer> destVersions = destClient.getAllVersions(subject);
+            assertTrue(destVersions.isEmpty(), "the destination registry starts empty");
+
+            // The transform will pass for key and value with byte schemas
+            log.info("applying transformation");
+            assertDoesNotThrow(() -> smt.apply(record));
+
+            // check the value schema was copied, and the destination now has some version
+            destVersions = destClient.getAllVersions(subject);
+            assertEquals(1, destVersions.size(),
+                    "the destination registry has been updated with first schema");
+
+            log.info("applying transformation");
+            assertThrows(ConnectException.class, () -> smt.apply(nextRecord));
+
+        } catch (IOException | RestClientException e) {
+            fail(e);
+        }
     }
 }
