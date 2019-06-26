@@ -27,6 +27,7 @@ import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.slf4j.Logger;
@@ -43,6 +44,12 @@ import static org.apache.avro.Schema.Type.STRING;
 
 @SuppressWarnings("unchecked")
 public class TransformTest {
+
+    private enum ExplicitAuthType {
+        USER_INFO,
+        URL,
+        NULL;
+    }
 
     private static final Logger log = LoggerFactory.getLogger(TransformTest.class);
 
@@ -66,10 +73,12 @@ public class TransformTest {
             .endRecord();
 
     @RegisterExtension
-    final SchemaRegistryMock sourceSchemaRegistry = new SchemaRegistryMock();
+    final SchemaRegistryMock sourceSchemaRegistry =
+        new SchemaRegistryMock(SchemaRegistryMock.Role.SOURCE);
 
     @RegisterExtension
-    final SchemaRegistryMock destSchemaRegistry = new SchemaRegistryMock();
+    final SchemaRegistryMock destSchemaRegistry =
+        new SchemaRegistryMock(SchemaRegistryMock.Role.DESTINATION);
 
     private SchemaRegistryTransfer smt;
     private Map<String, Object> smtConfiguration;
@@ -101,6 +110,54 @@ public class TransformTest {
         smt.configure(smtConfiguration);
     }
 
+    private void configure(final String sourceUserInfo, final String destUserInfo, ExplicitAuthType credentialSource) {
+        if (credentialSource == ExplicitAuthType.USER_INFO) {
+            if (sourceUserInfo != null) {
+                smtConfiguration.put(ConfigName.SRC_BASIC_AUTH_CREDENTIALS_SOURCE, Constants.USER_INFO_SOURCE);
+                smtConfiguration.put(ConfigName.SRC_USER_INFO, sourceUserInfo);
+            }
+
+            if (destUserInfo != null) {
+                smtConfiguration.put(ConfigName.DEST_BASIC_AUTH_CREDENTIALS_SOURCE, Constants.USER_INFO_SOURCE);
+                smtConfiguration.put(ConfigName.DEST_USER_INFO, destUserInfo);
+            }
+        } else {
+            if (sourceUserInfo != null) {
+                String url = sourceSchemaRegistry.getUrl();
+                url = url.replace("://", "://" + sourceUserInfo + "@" );
+                smtConfiguration.put(ConfigName.SRC_SCHEMA_REGISTRY_URL, url);
+
+                if (credentialSource == ExplicitAuthType.URL) {
+                    smtConfiguration.put(ConfigName.SRC_BASIC_AUTH_CREDENTIALS_SOURCE, Constants.URL_SOURCE);
+                } else if (credentialSource == ExplicitAuthType.NULL) {
+                    // For an explicit null case, set both the URL and UserInfo to confirm that neither is found
+                    smtConfiguration.put(ConfigName.SRC_BASIC_AUTH_CREDENTIALS_SOURCE, null);
+                    smtConfiguration.put(ConfigName.SRC_USER_INFO, sourceUserInfo);
+                } else {
+                    // For null ExplicitAuthType, insert no key and rely on implicit default.
+                }
+            }
+
+            if (destUserInfo != null) {
+                String url = destSchemaRegistry.getUrl();
+                url = url.replace("://", "://" + destUserInfo + "@" );
+                smtConfiguration.put(ConfigName.DEST_SCHEMA_REGISTRY_URL, url);
+
+                if (credentialSource == ExplicitAuthType.URL) {
+                    smtConfiguration.put(ConfigName.DEST_BASIC_AUTH_CREDENTIALS_SOURCE, Constants.URL_SOURCE);
+                } else if (credentialSource == ExplicitAuthType.NULL) {
+                    // For an explicit null case, set both the URL and UserInfo to confirm that neither is found
+                    smtConfiguration.put(ConfigName.DEST_BASIC_AUTH_CREDENTIALS_SOURCE, null);
+                    smtConfiguration.put(ConfigName.DEST_USER_INFO, destUserInfo);
+                } else {
+                    // For null ExplicitAuthType, insert no key and rely on implicit default.
+                }
+            }
+        }
+
+        smt.configure(smtConfiguration);
+    }
+
     private ByteArrayOutputStream encodeAvroObject(org.apache.avro.Schema schema, int sourceId, Object datum) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
 
@@ -118,6 +175,25 @@ public class TransformTest {
         encoder.flush();
 
         return out;
+    }
+
+    // Used to run a message through the SMT when testing authentication modes, which only need to
+    // know if there was a communication error, but rely on other tests to verify schema transfers
+    // are making the correct API calls.
+    private void passSimpleMessage() throws IOException {
+        // Create key/value schemas for source registry
+        log.info("Registering key/value string schemas in source registry");
+        final int sourceKeyId = sourceSchemaRegistry.registerSchema(TOPIC, true, STRING_SCHEMA);
+        final int sourceValId = sourceSchemaRegistry.registerSchema(TOPIC, false, STRING_SCHEMA);
+
+        final ByteArrayOutputStream keyOut =
+            encodeAvroObject(STRING_SCHEMA, sourceKeyId, Constants.HELLO_WORLD_VALUE);
+        final ByteArrayOutputStream valOut =
+            encodeAvroObject(STRING_SCHEMA, sourceValId, Constants.HELLO_WORLD_VALUE);
+        final ConnectRecord record =
+            createRecord(keyOut.toByteArray(), valOut.toByteArray());
+
+        smt.apply(record);
     }
 
     @BeforeEach
@@ -190,6 +266,86 @@ public class TransformTest {
 
         // tries to lookup schema id 0, but that isn't a valid id
         assertThrows(ConnectException.class, () -> smt.apply(record));
+    }
+
+    @Test
+    @Tag(Constants.USE_BASIC_AUTH_SOURCE_TAG)
+    public void testSourceBasicHttpAuthUserInfo() throws IOException {
+        configure(Constants.HTTP_AUTH_CREDENTIALS_FIXTURE, null, ExplicitAuthType.USER_INFO);
+
+        this.passSimpleMessage();
+    }
+
+    @Test
+    @Tag(Constants.USE_BASIC_AUTH_DEST_TAG)
+    public void testDestinationBasicHttpAuthUserInfo() throws IOException {
+        configure(null, Constants.HTTP_AUTH_CREDENTIALS_FIXTURE, ExplicitAuthType.USER_INFO);
+
+        this.passSimpleMessage();
+    }
+
+    @Test
+    @Tag(Constants.USE_BASIC_AUTH_SOURCE_TAG)
+    public void testSourceBasicHttpAuthUrl() throws IOException {
+        configure(Constants.HTTP_AUTH_CREDENTIALS_FIXTURE, null, ExplicitAuthType.URL);
+
+        this.passSimpleMessage();
+    }
+
+    @Test
+    @Tag(Constants.USE_BASIC_AUTH_DEST_TAG)
+    public void testDestinationBasicHttpAuthUrl() throws IOException {
+        configure(null, Constants.HTTP_AUTH_CREDENTIALS_FIXTURE, ExplicitAuthType.URL);
+
+        this.passSimpleMessage();
+    }
+
+    @Test
+    @Tag(Constants.USE_BASIC_AUTH_SOURCE_TAG)
+    public void testSourceBasicHttpAuthNull() throws IOException {
+        configure(Constants.HTTP_AUTH_CREDENTIALS_FIXTURE, null, ExplicitAuthType.NULL);
+
+       assertThrows(ConnectException.class, () -> this.passSimpleMessage());
+    }
+
+    @Test
+    @Tag(Constants.USE_BASIC_AUTH_DEST_TAG)
+    public void testDestinationBasicHttpAuthNull() throws IOException {
+        configure(null, Constants.HTTP_AUTH_CREDENTIALS_FIXTURE, ExplicitAuthType.NULL);
+
+        assertThrows(ConnectException.class, () -> this.passSimpleMessage());
+    }
+
+    @Test
+    @Tag(Constants.USE_BASIC_AUTH_SOURCE_TAG)
+    public void testSourceBasicHttpAuthImplicitDefault() throws IOException {
+        configure(Constants.HTTP_AUTH_CREDENTIALS_FIXTURE, null, null);
+
+        this.passSimpleMessage();
+    }
+
+    @Test
+    @Tag(Constants.USE_BASIC_AUTH_DEST_TAG)
+    public void testDestinationBasicHttpAuthImplicitDefault() throws IOException {
+        configure(null, Constants.HTTP_AUTH_CREDENTIALS_FIXTURE, null);
+
+        this.passSimpleMessage();
+    }
+
+    @Test
+    @Tag(Constants.USE_BASIC_AUTH_SOURCE_TAG)
+    public void testSourceBasicHttpAuthOmit() throws IOException {
+        configure(null, null, null);
+
+        assertThrows(ConnectException.class, () -> this.passSimpleMessage());
+    }
+
+    @Test
+    @Tag(Constants.USE_BASIC_AUTH_DEST_TAG)
+    public void testDestinationBasicHttpAuthOmit() throws IOException {
+        configure(null, null, null);
+
+        assertThrows(ConnectException.class, () -> this.passSimpleMessage());
     }
 
     @Test

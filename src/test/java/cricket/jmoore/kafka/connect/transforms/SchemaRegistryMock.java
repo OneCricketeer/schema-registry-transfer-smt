@@ -5,6 +5,7 @@ import static java.net.HttpURLConnection.HTTP_NOT_FOUND;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
@@ -28,6 +29,7 @@ import io.confluent.kafka.serializers.subject.TopicNameStrategy;
 import io.confluent.kafka.serializers.subject.strategy.SubjectNameStrategy;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.client.MappingBuilder;
 import com.github.tomakehurst.wiremock.client.ResponseDefinitionBuilder;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.github.tomakehurst.wiremock.common.FileSource;
@@ -36,6 +38,7 @@ import com.github.tomakehurst.wiremock.extension.Parameters;
 import com.github.tomakehurst.wiremock.extension.ResponseDefinitionTransformer;
 import com.github.tomakehurst.wiremock.http.Request;
 import com.github.tomakehurst.wiremock.http.ResponseDefinition;
+import com.github.tomakehurst.wiremock.stubbing.StubMapping;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Iterables;
 
@@ -46,6 +49,11 @@ import com.google.common.collect.Iterables;
  * <li>you can register a schema and</li>
  * <li>retrieve a schema by id.</li>
  * </ul>
+ *
+ * <p>Additionally, server-side mock can be toggled from its default authentication behavior (no authentication)
+ * to a variant that requires basic HTTP Authentication using fixed credentials `username:password` by placing a
+ * `@Tag(Constants.USE_BASIC_AUTH_SOURCE_TAG)` and/or `@Tag(Constants.USE_BASIC_AUTH_DESTR_TAG)` annotation after
+ * @Test annotation of any basic HTTP authentication dependent test code.</p>
  *
  * <p>If you use the TestToplogy of the fluent Kafka Streams test, you don't have to interact with this class at
  * all.</p>
@@ -64,11 +72,33 @@ import com.google.common.collect.Iterables;
  *         final Schema retrievedSchema = this.schemaRegistry.getSchemaRegistryClient().getById(id);
  *         assertThat(retrievedSchema).isEqualTo(keySchema);
  *     }
+ *
+ *     {@literal @Test}
+ *     {@literal @Tag(Constants.USE_BASIC_AUTH_SOURCE_TAG)}
+ *     {@literal @Tag(Constants.USE_BASIC_AUTH_DEST_TAG)}
+ *     void shouldUseBasicAuth() {
+ *         final Map<String, Object> smtConfiguration = new HashMap<>();
+ *         // ...
+ *         smtConfiguration.put(ConfigName.SRC_BASIC_AUTH_CREDENTIALS_SOURCE, "USER_INFO");
+ *         smtConfiguration.put(ConfigName.SRC_USER_INFO, "username:password");
+ *         smtConfiguration.put(ConfigName.SRC_BASIC_AUTH_CREDENTIALS_SOURCE, "USER_INFO");
+ *         smtConfiguration.put(ConfigName.SRC_USER_INFO, "username:password");
+ *         // ...
+ *         final SchemaRegistryTransfer<SourceRecord> smt = new SchemaRegistryTransfer<SourceRecord>();
+ *         smt.configure(smtConfiguration);
+ *         // ...
+ *         smt.apply(...);
+ *     }
  * }</code></pre>
  * <p>
  * To retrieve the url of the schema registry for a Kafka Streams config, please use {@link #getUrl()}
  */
 public class SchemaRegistryMock implements BeforeEachCallback, AfterEachCallback {
+    public enum Role {
+        SOURCE,
+        DESTINATION;
+    }
+
     private static final String SCHEMA_REGISTRATION_PATTERN = "/subjects/[^/]+/versions";
     private static final String SCHEMA_BY_ID_PATTERN = "/schemas/ids/";
     private static final String CONFIG_PATTERN = "/config";
@@ -82,8 +112,18 @@ public class SchemaRegistryMock implements BeforeEachCallback, AfterEachCallback
                     this.autoRegistrationHandler, this.listVersionsHandler, this.getVersionHandler,
                     this.getConfigHandler));
     private final SchemaRegistryClient schemaRegistryClient = new MockSchemaRegistryClient();
+    private final String basicAuthTag;
+    private Function<MappingBuilder, StubMapping> stubFor;
 
     private static final Logger log = LoggerFactory.getLogger(SchemaRegistryMock.class);
+
+    public SchemaRegistryMock(Role role) {
+        if (role == null) {
+            throw new NullPointerException("Role must be either SOURCE or DESTINATION");
+        }
+
+        this.basicAuthTag = (role == Role.SOURCE) ? Constants.USE_BASIC_AUTH_SOURCE_TAG : Constants.USE_BASIC_AUTH_DEST_TAG; 
+    }
 
     @Override
     public void afterEach(final ExtensionContext context) {
@@ -92,16 +132,24 @@ public class SchemaRegistryMock implements BeforeEachCallback, AfterEachCallback
 
     @Override
     public void beforeEach(final ExtensionContext context) {
+        if (context.getTags().contains(this.basicAuthTag)) {
+            String[] userPass = Constants.HTTP_AUTH_CREDENTIALS_FIXTURE.split(":");
+            this.stubFor = (MappingBuilder mappingBuilder) -> this.mockSchemaRegistry.stubFor(
+                    mappingBuilder.withBasicAuth(userPass[0], userPass[1]));
+        } else {
+            this.stubFor = (MappingBuilder mappingBuilder) -> this.mockSchemaRegistry.stubFor(mappingBuilder);
+        }
+
         this.mockSchemaRegistry.start();
-        this.mockSchemaRegistry.stubFor(WireMock.get(WireMock.urlPathMatching(SCHEMA_REGISTRATION_PATTERN))
+        this.stubFor.apply(WireMock.get(WireMock.urlPathMatching(SCHEMA_REGISTRATION_PATTERN))
                 .willReturn(WireMock.aResponse().withTransformers(this.listVersionsHandler.getName())));
-        this.mockSchemaRegistry.stubFor(WireMock.post(WireMock.urlPathMatching(SCHEMA_REGISTRATION_PATTERN))
+        this.stubFor.apply(WireMock.post(WireMock.urlPathMatching(SCHEMA_REGISTRATION_PATTERN))
                 .willReturn(WireMock.aResponse().withTransformers(this.autoRegistrationHandler.getName())));
-        this.mockSchemaRegistry.stubFor(WireMock.get(WireMock.urlPathMatching(SCHEMA_REGISTRATION_PATTERN + "/(?:latest|\\d+)"))
+        this.stubFor.apply(WireMock.get(WireMock.urlPathMatching(SCHEMA_REGISTRATION_PATTERN + "/(?:latest|\\d+)"))
                 .willReturn(WireMock.aResponse().withTransformers(this.getVersionHandler.getName())));
-        this.mockSchemaRegistry.stubFor(WireMock.get(WireMock.urlPathMatching(CONFIG_PATTERN))
+        this.stubFor.apply(WireMock.get(WireMock.urlPathMatching(CONFIG_PATTERN))
                 .willReturn(WireMock.aResponse().withTransformers(this.getConfigHandler.getName())));
-        this.mockSchemaRegistry.stubFor(WireMock.get(WireMock.urlPathMatching(SCHEMA_BY_ID_PATTERN + "\\d+"))
+        this.stubFor.apply(WireMock.get(WireMock.urlPathMatching(SCHEMA_BY_ID_PATTERN + "\\d+"))
                 .willReturn(WireMock.aResponse().withStatus(HTTP_NOT_FOUND)));
     }
 
@@ -116,7 +164,7 @@ public class SchemaRegistryMock implements BeforeEachCallback, AfterEachCallback
     private int register(final String subject, final Schema schema) {
         try {
             final int id = this.schemaRegistryClient.register(subject, schema);
-            this.mockSchemaRegistry.stubFor(WireMock.get(WireMock.urlEqualTo(SCHEMA_BY_ID_PATTERN + id))
+            this.stubFor.apply(WireMock.get(WireMock.urlEqualTo(SCHEMA_BY_ID_PATTERN + id))
                     .willReturn(ResponseDefinitionBuilder.okForJson(new SchemaString(schema.toString()))));
             log.debug("Registered schema {}", id);
             return id;
