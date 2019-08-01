@@ -53,6 +53,8 @@ public class TransformTest {
 
     private static final Logger log = LoggerFactory.getLogger(TransformTest.class);
 
+    public static final String HELLO_WORLD_VALUE = "Hello, world!";
+
     public static final String TOPIC = TransformTest.class.getSimpleName();
 
     private static final byte MAGIC_BYTE = (byte) 0x0;
@@ -187,9 +189,9 @@ public class TransformTest {
         final int sourceValId = sourceSchemaRegistry.registerSchema(TOPIC, false, STRING_SCHEMA);
 
         final ByteArrayOutputStream keyOut =
-            encodeAvroObject(STRING_SCHEMA, sourceKeyId, Constants.HELLO_WORLD_VALUE);
+            encodeAvroObject(STRING_SCHEMA, sourceKeyId, HELLO_WORLD_VALUE);
         final ByteArrayOutputStream valOut =
-            encodeAvroObject(STRING_SCHEMA, sourceValId, Constants.HELLO_WORLD_VALUE);
+            encodeAvroObject(STRING_SCHEMA, sourceValId, HELLO_WORLD_VALUE);
         final ConnectRecord record =
             createRecord(keyOut.toByteArray(), valOut.toByteArray());
 
