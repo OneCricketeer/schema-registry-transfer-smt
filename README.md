@@ -93,8 +93,8 @@ registry client.
 
 Configuration Parameter | Default | Description
 ----------------------- | ------- | -----------
-**(src|dest).basic.auth.credentials.source** | URL | Specify how to pick credentials for Basic Auth header. Supported values are URL, USER_INFO and SASL_INHERIT
-**(src|dest).basic.auth.user.info** |  | Specify credentials for Basic Auth in form of {username}:{password} when source is USER_INFO
+<b>(src\|dest).basic.auth.credentials.source</b> | URL | Specify how to pick credentials for Basic Auth header. Supported values are `URL`, `USER_INFO` and `SASL_INHERIT`
+<b>(src\|dest).basic.auth.user.info</b> |  | Specify credentials for Basic Auth in form of `{username}:{password}` when source is `USER_INFO`
 
 ## Subject Renaming
 
