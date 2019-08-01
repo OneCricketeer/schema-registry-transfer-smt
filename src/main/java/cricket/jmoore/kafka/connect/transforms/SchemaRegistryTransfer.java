@@ -3,6 +3,7 @@ package cricket.jmoore.kafka.connect.transforms;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -40,8 +41,21 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
     public static final ConfigDef CONFIG_DEF;
     public static final String SCHEMA_CAPACITY_CONFIG_DOC = "The maximum amount of schemas to be stored for each Schema Registry client.";
     public static final Integer SCHEMA_CAPACITY_CONFIG_DEFAULT = 100;
+
+    public static final String SRC_PREAMBLE = "For source consumer's schema registry, ";
     public static final String SRC_SCHEMA_REGISTRY_CONFIG_DOC = "A list of addresses for the Schema Registry to copy from. The consumer's Schema Registry.";
+    public static final String SRC_BASIC_AUTH_CREDENTIALS_SOURCE_CONFIG_DOC = SRC_PREAMBLE + AbstractKafkaAvroSerDeConfig.BASIC_AUTH_CREDENTIALS_SOURCE_DOC;
+    public static final String SRC_BASIC_AUTH_CREDENTIALS_SOURCE_CONFIG_DEFAULT = AbstractKafkaAvroSerDeConfig.BASIC_AUTH_CREDENTIALS_SOURCE_DEFAULT;
+    public static final String SRC_USER_INFO_CONFIG_DOC = SRC_PREAMBLE + AbstractKafkaAvroSerDeConfig.SCHEMA_REGISTRY_USER_INFO_DOC;
+    public static final String SRC_USER_INFO_CONFIG_DEFAULT = AbstractKafkaAvroSerDeConfig.SCHEMA_REGISTRY_USER_INFO_DEFAULT;
+
+    public static final String DEST_PREAMBLE = "For target producer's schema registry, ";
     public static final String DEST_SCHEMA_REGISTRY_CONFIG_DOC = "A list of addresses for the Schema Registry to copy to. The producer's Schema Registry.";
+    public static final String DEST_BASIC_AUTH_CREDENTIALS_SOURCE_CONFIG_DOC = DEST_PREAMBLE + AbstractKafkaAvroSerDeConfig.BASIC_AUTH_CREDENTIALS_SOURCE_DOC;
+    public static final String DEST_BASIC_AUTH_CREDENTIALS_SOURCE_CONFIG_DEFAULT = AbstractKafkaAvroSerDeConfig.BASIC_AUTH_CREDENTIALS_SOURCE_DEFAULT;
+    public static final String DEST_USER_INFO_CONFIG_DOC = DEST_PREAMBLE + AbstractKafkaAvroSerDeConfig.SCHEMA_REGISTRY_USER_INFO_DOC;
+    public static final String DEST_USER_INFO_CONFIG_DEFAULT = AbstractKafkaAvroSerDeConfig.SCHEMA_REGISTRY_USER_INFO_DEFAULT;
+
     public static final String TRANSFER_KEYS_CONFIG_DOC = "Whether or not to copy message key schemas between registries.";
     public static final Boolean TRANSFER_KEYS_CONFIG_DEFAULT = true;
     public static final String INCLUDE_HEADERS_CONFIG_DOC = "Whether or not to preserve the Kafka Connect Record headers.";
@@ -62,6 +76,10 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
         CONFIG_DEF = (new ConfigDef())
                 .define(ConfigName.SRC_SCHEMA_REGISTRY_URL, ConfigDef.Type.LIST, ConfigDef.NO_DEFAULT_VALUE, new NonEmptyListValidator(), ConfigDef.Importance.HIGH, SRC_SCHEMA_REGISTRY_CONFIG_DOC)
                 .define(ConfigName.DEST_SCHEMA_REGISTRY_URL, ConfigDef.Type.LIST, ConfigDef.NO_DEFAULT_VALUE, new NonEmptyListValidator(), ConfigDef.Importance.HIGH, DEST_SCHEMA_REGISTRY_CONFIG_DOC)
+                .define(ConfigName.SRC_BASIC_AUTH_CREDENTIALS_SOURCE, ConfigDef.Type.STRING, SRC_BASIC_AUTH_CREDENTIALS_SOURCE_CONFIG_DEFAULT, ConfigDef.Importance.MEDIUM, SRC_BASIC_AUTH_CREDENTIALS_SOURCE_CONFIG_DOC)
+                .define(ConfigName.SRC_USER_INFO, ConfigDef.Type.STRING, SRC_USER_INFO_CONFIG_DEFAULT, ConfigDef.Importance.MEDIUM, SRC_USER_INFO_CONFIG_DOC)
+                .define(ConfigName.DEST_BASIC_AUTH_CREDENTIALS_SOURCE, ConfigDef.Type.STRING, DEST_BASIC_AUTH_CREDENTIALS_SOURCE_CONFIG_DEFAULT, ConfigDef.Importance.MEDIUM, DEST_BASIC_AUTH_CREDENTIALS_SOURCE_CONFIG_DOC)
+                .define(ConfigName.DEST_USER_INFO, ConfigDef.Type.STRING, DEST_USER_INFO_CONFIG_DEFAULT, ConfigDef.Importance.MEDIUM, DEST_USER_INFO_CONFIG_DOC)
                 .define(ConfigName.SCHEMA_CAPACITY, ConfigDef.Type.INT, SCHEMA_CAPACITY_CONFIG_DEFAULT, ConfigDef.Importance.LOW, SCHEMA_CAPACITY_CONFIG_DOC)
                 .define(ConfigName.TRANSFER_KEYS, ConfigDef.Type.BOOLEAN, TRANSFER_KEYS_CONFIG_DEFAULT, ConfigDef.Importance.MEDIUM, TRANSFER_KEYS_CONFIG_DOC)
                 .define(ConfigName.INCLUDE_HEADERS, ConfigDef.Type.BOOLEAN, INCLUDE_HEADERS_CONFIG_DEFAULT, ConfigDef.Importance.MEDIUM, INCLUDE_HEADERS_CONFIG_DOC)
@@ -79,12 +97,24 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
         SimpleConfig config = new SimpleConfig(CONFIG_DEF, props);
 
         List<String> sourceUrls = config.getList(ConfigName.SRC_SCHEMA_REGISTRY_URL);
+        final Map<String, String> sourceProps = new HashMap<>();
+        sourceProps.put(AbstractKafkaAvroSerDeConfig.BASIC_AUTH_CREDENTIALS_SOURCE,
+            config.getString(ConfigName.SRC_BASIC_AUTH_CREDENTIALS_SOURCE));
+        sourceProps.put(AbstractKafkaAvroSerDeConfig.USER_INFO_CONFIG,
+            config.getString(ConfigName.SRC_USER_INFO));
+
         List<String> destUrls = config.getList(ConfigName.DEST_SCHEMA_REGISTRY_URL);
+        final Map<String, String> destProps = new HashMap<>();
+        destProps.put(AbstractKafkaAvroSerDeConfig.BASIC_AUTH_CREDENTIALS_SOURCE,
+            config.getString(ConfigName.DEST_BASIC_AUTH_CREDENTIALS_SOURCE));
+        destProps.put(AbstractKafkaAvroSerDeConfig.USER_INFO_CONFIG,
+            config.getString(ConfigName.DEST_USER_INFO));
+
         Integer schemaCapacity = config.getInt(ConfigName.SCHEMA_CAPACITY);
 
         this.schemaCache = new SynchronizedCache<>(new LRUCache<>(schemaCapacity));
-        this.sourceSchemaRegistryClient = new CachedSchemaRegistryClient(sourceUrls, schemaCapacity);
-        this.destSchemaRegistryClient = new CachedSchemaRegistryClient(destUrls, schemaCapacity);
+        this.sourceSchemaRegistryClient = new CachedSchemaRegistryClient(sourceUrls, schemaCapacity, sourceProps);
+        this.destSchemaRegistryClient = new CachedSchemaRegistryClient(destUrls, schemaCapacity, destProps);
 
         this.transferKeys = config.getBoolean(ConfigName.TRANSFER_KEYS);
         this.includeHeaders = config.getBoolean(ConfigName.INCLUDE_HEADERS);
@@ -213,7 +243,11 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
 
     interface ConfigName {
         String SRC_SCHEMA_REGISTRY_URL = "src." + AbstractKafkaAvroSerDeConfig.SCHEMA_REGISTRY_URL_CONFIG;
+        String SRC_BASIC_AUTH_CREDENTIALS_SOURCE = "src." + AbstractKafkaAvroSerDeConfig.BASIC_AUTH_CREDENTIALS_SOURCE;
+        String SRC_USER_INFO = "src." + AbstractKafkaAvroSerDeConfig.USER_INFO_CONFIG;
         String DEST_SCHEMA_REGISTRY_URL = "dest." + AbstractKafkaAvroSerDeConfig.SCHEMA_REGISTRY_URL_CONFIG;
+        String DEST_BASIC_AUTH_CREDENTIALS_SOURCE = "dest." + AbstractKafkaAvroSerDeConfig.BASIC_AUTH_CREDENTIALS_SOURCE;
+        String DEST_USER_INFO = "dest." + AbstractKafkaAvroSerDeConfig.USER_INFO_CONFIG;
         String SCHEMA_CAPACITY = "schema.capacity";
         String TRANSFER_KEYS = "transfer.message.keys";
         String INCLUDE_HEADERS = "include.message.headers";
