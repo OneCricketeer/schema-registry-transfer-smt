@@ -119,7 +119,7 @@ public class SchemaRegistryMock implements BeforeEachCallback, AfterEachCallback
 
     public SchemaRegistryMock(Role role) {
         if (role == null) {
-            throw new NullPointerException("Role must be either SOURCE or DESTINATION");
+            throw new IllegalArgumentException("Role must be either SOURCE or DESTINATION");
         }
 
         this.basicAuthTag = (role == Role.SOURCE) ? Constants.USE_BASIC_AUTH_SOURCE_TAG : Constants.USE_BASIC_AUTH_DEST_TAG; 
