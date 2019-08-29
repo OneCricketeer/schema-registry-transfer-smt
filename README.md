@@ -81,6 +81,20 @@ Configuration Parameter | Default | Description
 **include.message.headers** | true | Indicates whether message headers from source records should be preserved after the transform.
 **schema.capacity** | 100 | Capacity of schemas that can be cached in each `CachedSchemaRegistryClient`
 
+## Embedded Schema Registry Client Configuration
+
+Schema Registry Transfer SMT passes some properties prefixed by either `src.` or `dest.`
+through to its embedded schema registry clients, after stripping away `src.` or `dest.`
+prefix used to disambiguate which client is to receive which configuration value.
+
+Properties prefixed by `src.` are passed through to the source consumer's schema registry
+client.  Properties prefixed by `dest.` are passed through to the target producer's schema
+registry client.
+
+Configuration Parameter | Default | Description
+----------------------- | ------- | -----------
+<b>(src\|dest).basic.auth.credentials.source</b> | URL | Specify how to pick credentials for Basic Auth header. Supported values are `URL`, `USER_INFO` and `SASL_INHERIT`
+<b>(src\|dest).basic.auth.user.info</b> |  | Specify credentials for Basic Auth in form of `{username}:{password}` when source is `USER_INFO`
 
 ## Subject Renaming
 
