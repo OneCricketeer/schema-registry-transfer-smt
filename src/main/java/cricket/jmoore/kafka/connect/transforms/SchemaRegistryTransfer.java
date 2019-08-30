@@ -99,14 +99,14 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
         List<String> sourceUrls = config.getList(ConfigName.SRC_SCHEMA_REGISTRY_URL);
         final Map<String, String> sourceProps = new HashMap<>();
         sourceProps.put(AbstractKafkaAvroSerDeConfig.BASIC_AUTH_CREDENTIALS_SOURCE,
-            config.getString(ConfigName.SRC_BASIC_AUTH_CREDENTIALS_SOURCE));
+            "SRC_" + config.getString(ConfigName.SRC_BASIC_AUTH_CREDENTIALS_SOURCE));
         sourceProps.put(AbstractKafkaAvroSerDeConfig.USER_INFO_CONFIG,
             config.getString(ConfigName.SRC_USER_INFO));
 
         List<String> destUrls = config.getList(ConfigName.DEST_SCHEMA_REGISTRY_URL);
         final Map<String, String> destProps = new HashMap<>();
         destProps.put(AbstractKafkaAvroSerDeConfig.BASIC_AUTH_CREDENTIALS_SOURCE,
-            config.getString(ConfigName.DEST_BASIC_AUTH_CREDENTIALS_SOURCE));
+            "DEST_" + config.getString(ConfigName.DEST_BASIC_AUTH_CREDENTIALS_SOURCE));
         destProps.put(AbstractKafkaAvroSerDeConfig.USER_INFO_CONFIG,
             config.getString(ConfigName.DEST_USER_INFO));
 
