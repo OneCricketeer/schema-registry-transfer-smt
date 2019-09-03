@@ -77,9 +77,9 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
                 .define(ConfigName.SRC_SCHEMA_REGISTRY_URL, ConfigDef.Type.LIST, ConfigDef.NO_DEFAULT_VALUE, new NonEmptyListValidator(), ConfigDef.Importance.HIGH, SRC_SCHEMA_REGISTRY_CONFIG_DOC)
                 .define(ConfigName.DEST_SCHEMA_REGISTRY_URL, ConfigDef.Type.LIST, ConfigDef.NO_DEFAULT_VALUE, new NonEmptyListValidator(), ConfigDef.Importance.HIGH, DEST_SCHEMA_REGISTRY_CONFIG_DOC)
                 .define(ConfigName.SRC_BASIC_AUTH_CREDENTIALS_SOURCE, ConfigDef.Type.STRING, SRC_BASIC_AUTH_CREDENTIALS_SOURCE_CONFIG_DEFAULT, ConfigDef.Importance.MEDIUM, SRC_BASIC_AUTH_CREDENTIALS_SOURCE_CONFIG_DOC)
-                .define(ConfigName.SRC_USER_INFO, ConfigDef.Type.STRING, SRC_USER_INFO_CONFIG_DEFAULT, ConfigDef.Importance.MEDIUM, SRC_USER_INFO_CONFIG_DOC)
+                .define(ConfigName.SRC_USER_INFO, ConfigDef.Type.PASSWORD, SRC_USER_INFO_CONFIG_DEFAULT, ConfigDef.Importance.MEDIUM, SRC_USER_INFO_CONFIG_DOC)
                 .define(ConfigName.DEST_BASIC_AUTH_CREDENTIALS_SOURCE, ConfigDef.Type.STRING, DEST_BASIC_AUTH_CREDENTIALS_SOURCE_CONFIG_DEFAULT, ConfigDef.Importance.MEDIUM, DEST_BASIC_AUTH_CREDENTIALS_SOURCE_CONFIG_DOC)
-                .define(ConfigName.DEST_USER_INFO, ConfigDef.Type.STRING, DEST_USER_INFO_CONFIG_DEFAULT, ConfigDef.Importance.MEDIUM, DEST_USER_INFO_CONFIG_DOC)
+                .define(ConfigName.DEST_USER_INFO, ConfigDef.Type.PASSWORD, DEST_USER_INFO_CONFIG_DEFAULT, ConfigDef.Importance.MEDIUM, DEST_USER_INFO_CONFIG_DOC)
                 .define(ConfigName.SCHEMA_CAPACITY, ConfigDef.Type.INT, SCHEMA_CAPACITY_CONFIG_DEFAULT, ConfigDef.Importance.LOW, SCHEMA_CAPACITY_CONFIG_DOC)
                 .define(ConfigName.TRANSFER_KEYS, ConfigDef.Type.BOOLEAN, TRANSFER_KEYS_CONFIG_DEFAULT, ConfigDef.Importance.MEDIUM, TRANSFER_KEYS_CONFIG_DOC)
                 .define(ConfigName.INCLUDE_HEADERS, ConfigDef.Type.BOOLEAN, INCLUDE_HEADERS_CONFIG_DEFAULT, ConfigDef.Importance.MEDIUM, INCLUDE_HEADERS_CONFIG_DOC)
@@ -101,14 +101,16 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
         sourceProps.put(AbstractKafkaAvroSerDeConfig.BASIC_AUTH_CREDENTIALS_SOURCE,
             config.getString(ConfigName.SRC_BASIC_AUTH_CREDENTIALS_SOURCE));
         sourceProps.put(AbstractKafkaAvroSerDeConfig.USER_INFO_CONFIG,
-            config.getString(ConfigName.SRC_USER_INFO));
+            config.getPassword(ConfigName.SRC_USER_INFO)
+                .value());
 
         List<String> destUrls = config.getList(ConfigName.DEST_SCHEMA_REGISTRY_URL);
         final Map<String, String> destProps = new HashMap<>();
         destProps.put(AbstractKafkaAvroSerDeConfig.BASIC_AUTH_CREDENTIALS_SOURCE,
             config.getString(ConfigName.DEST_BASIC_AUTH_CREDENTIALS_SOURCE));
         destProps.put(AbstractKafkaAvroSerDeConfig.USER_INFO_CONFIG,
-            config.getString(ConfigName.DEST_USER_INFO));
+            config.getPassword(ConfigName.DEST_USER_INFO)
+                .value());
 
         Integer schemaCapacity = config.getInt(ConfigName.SCHEMA_CAPACITY);
 
