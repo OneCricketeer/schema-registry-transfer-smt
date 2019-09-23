@@ -272,8 +272,21 @@ public class TransformTest {
 
     @Test
     @Tag(Constants.USE_BASIC_AUTH_SOURCE_TAG)
+    @Tag(Constants.USE_BASIC_AUTH_DEST_TAG)
+    public void testBothBasicHttpAuthUserInfo() throws IOException {
+        configure(
+                Constants.HTTP_AUTH_SOURCE_CREDENTIALS_FIXTURE,
+                Constants.HTTP_AUTH_DEST_CREDENTIALS_FIXTURE,
+                ExplicitAuthType.USER_INFO);
+
+        this.passSimpleMessage();
+    }
+
+
+    @Test
+    @Tag(Constants.USE_BASIC_AUTH_SOURCE_TAG)
     public void testSourceBasicHttpAuthUserInfo() throws IOException {
-        configure(Constants.HTTP_AUTH_CREDENTIALS_FIXTURE, null, ExplicitAuthType.USER_INFO);
+        configure(Constants.HTTP_AUTH_SOURCE_CREDENTIALS_FIXTURE, null, ExplicitAuthType.USER_INFO);
 
         this.passSimpleMessage();
     }
@@ -281,7 +294,7 @@ public class TransformTest {
     @Test
     @Tag(Constants.USE_BASIC_AUTH_DEST_TAG)
     public void testDestinationBasicHttpAuthUserInfo() throws IOException {
-        configure(null, Constants.HTTP_AUTH_CREDENTIALS_FIXTURE, ExplicitAuthType.USER_INFO);
+        configure(null, Constants.HTTP_AUTH_DEST_CREDENTIALS_FIXTURE, ExplicitAuthType.USER_INFO);
 
         this.passSimpleMessage();
     }
@@ -289,7 +302,7 @@ public class TransformTest {
     @Test
     @Tag(Constants.USE_BASIC_AUTH_SOURCE_TAG)
     public void testSourceBasicHttpAuthUrl() throws IOException {
-        configure(Constants.HTTP_AUTH_CREDENTIALS_FIXTURE, null, ExplicitAuthType.URL);
+        configure(Constants.HTTP_AUTH_SOURCE_CREDENTIALS_FIXTURE, null, ExplicitAuthType.URL);
 
         this.passSimpleMessage();
     }
@@ -297,7 +310,7 @@ public class TransformTest {
     @Test
     @Tag(Constants.USE_BASIC_AUTH_DEST_TAG)
     public void testDestinationBasicHttpAuthUrl() throws IOException {
-        configure(null, Constants.HTTP_AUTH_CREDENTIALS_FIXTURE, ExplicitAuthType.URL);
+        configure(null, Constants.HTTP_AUTH_DEST_CREDENTIALS_FIXTURE, ExplicitAuthType.URL);
 
         this.passSimpleMessage();
     }
@@ -305,7 +318,7 @@ public class TransformTest {
     @Test
     @Tag(Constants.USE_BASIC_AUTH_SOURCE_TAG)
     public void testSourceBasicHttpAuthNull() throws IOException {
-        configure(Constants.HTTP_AUTH_CREDENTIALS_FIXTURE, null, ExplicitAuthType.NULL);
+        configure(Constants.HTTP_AUTH_SOURCE_CREDENTIALS_FIXTURE, null, ExplicitAuthType.NULL);
 
        assertThrows(ConnectException.class, () -> this.passSimpleMessage());
     }
@@ -313,7 +326,7 @@ public class TransformTest {
     @Test
     @Tag(Constants.USE_BASIC_AUTH_DEST_TAG)
     public void testDestinationBasicHttpAuthNull() throws IOException {
-        configure(null, Constants.HTTP_AUTH_CREDENTIALS_FIXTURE, ExplicitAuthType.NULL);
+        configure(null, Constants.HTTP_AUTH_DEST_CREDENTIALS_FIXTURE, ExplicitAuthType.NULL);
 
         assertThrows(ConnectException.class, () -> this.passSimpleMessage());
     }
@@ -321,7 +334,7 @@ public class TransformTest {
     @Test
     @Tag(Constants.USE_BASIC_AUTH_SOURCE_TAG)
     public void testSourceBasicHttpAuthImplicitDefault() throws IOException {
-        configure(Constants.HTTP_AUTH_CREDENTIALS_FIXTURE, null, null);
+        configure(Constants.HTTP_AUTH_SOURCE_CREDENTIALS_FIXTURE, null, null);
 
         this.passSimpleMessage();
     }
@@ -329,9 +342,25 @@ public class TransformTest {
     @Test
     @Tag(Constants.USE_BASIC_AUTH_DEST_TAG)
     public void testDestinationBasicHttpAuthImplicitDefault() throws IOException {
-        configure(null, Constants.HTTP_AUTH_CREDENTIALS_FIXTURE, null);
+        configure(null, Constants.HTTP_AUTH_DEST_CREDENTIALS_FIXTURE, null);
 
         this.passSimpleMessage();
+    }
+
+    @Test
+    @Tag(Constants.USE_BASIC_AUTH_SOURCE_TAG)
+    public void testSourceBasicHttpAuthWrong() throws IOException {
+        configure(Constants.HTTP_AUTH_DEST_CREDENTIALS_FIXTURE, null, null);
+
+        assertThrows(ConnectException.class, () -> this.passSimpleMessage());
+    }
+
+    @Test
+    @Tag(Constants.USE_BASIC_AUTH_DEST_TAG)
+    public void testDestinationBasicHttpAuthWrong() throws IOException {
+        configure(null, Constants.HTTP_AUTH_SOURCE_CREDENTIALS_FIXTURE, null);
+
+        assertThrows(ConnectException.class, () -> this.passSimpleMessage());
     }
 
     @Test

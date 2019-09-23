@@ -113,6 +113,7 @@ public class SchemaRegistryMock implements BeforeEachCallback, AfterEachCallback
                     this.getConfigHandler));
     private final SchemaRegistryClient schemaRegistryClient = new MockSchemaRegistryClient();
     private final String basicAuthTag;
+    private final String basicAuthCredentials;
     private Function<MappingBuilder, StubMapping> stubFor;
 
     private static final Logger log = LoggerFactory.getLogger(SchemaRegistryMock.class);
@@ -123,6 +124,8 @@ public class SchemaRegistryMock implements BeforeEachCallback, AfterEachCallback
         }
 
         this.basicAuthTag = (role == Role.SOURCE) ? Constants.USE_BASIC_AUTH_SOURCE_TAG : Constants.USE_BASIC_AUTH_DEST_TAG; 
+        this.basicAuthCredentials =
+            (role == Role.SOURCE)? Constants.HTTP_AUTH_SOURCE_CREDENTIALS_FIXTURE : Constants.HTTP_AUTH_DEST_CREDENTIALS_FIXTURE;
     }
 
     @Override
@@ -133,7 +136,7 @@ public class SchemaRegistryMock implements BeforeEachCallback, AfterEachCallback
     @Override
     public void beforeEach(final ExtensionContext context) {
         if (context.getTags().contains(this.basicAuthTag)) {
-            String[] userPass = Constants.HTTP_AUTH_CREDENTIALS_FIXTURE.split(":");
+            final String[] userPass = this.basicAuthCredentials.split(":");
             this.stubFor = (MappingBuilder mappingBuilder) -> this.mockSchemaRegistry.stubFor(
                     mappingBuilder.withBasicAuth(userPass[0], userPass[1]));
         } else {

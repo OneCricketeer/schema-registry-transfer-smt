@@ -10,5 +10,7 @@ public interface Constants {
 
     public static final String URL_SOURCE = "URL";
 
-    public static final String HTTP_AUTH_CREDENTIALS_FIXTURE = "username:password";
+    public static final String HTTP_AUTH_SOURCE_CREDENTIALS_FIXTURE = "sourceuser:sourcepass";
+
+    public static final String HTTP_AUTH_DEST_CREDENTIALS_FIXTURE = "destuser:destpass";
 }
