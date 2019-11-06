@@ -26,7 +26,7 @@
             <name>Jordan Moore</name>
             <url>https://github.com/cricket007</url>
             <roles>
-                <role>Committer</role>
+                <role>Owner</role>
             </roles>
         </developer>
     </developers>
@@ -39,6 +39,13 @@
         <system>github</system>
         <url>https://github.com/cricket007/schema-registry-transfer-smt/issues</url>
     </issueManagement>
+    <distributionManagement>
+        <repository>
+            <id>bintray</id>
+            <name>bintray-releases</name>
+            <url>https://api.bintray.com/maven/${env.BINTRAY_REPO_OWNER}/${env.BINTRAY_REPO}/${project.artifactId}/;publish=1</url>
+        </repository>
+    </distributionManagement>
 
     <repositories>
         <repository>
@@ -60,6 +67,7 @@
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
 
+        <slf4j.version>1.7.25</slf4j.version>
         <kafka.version>2.1.0</kafka.version>
         <confluent.version>5.1.0</confluent.version>
         <confluent.patch.version>-cp1</confluent.patch.version>
@@ -77,7 +85,7 @@
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
-            <version>1.7.25</version>
+            <version>${slf4j.version}</version>
             <scope>provided</scope>
         </dependency>
 
@@ -212,7 +220,7 @@
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>log4j-over-slf4j</artifactId>
-            <version>1.7.25</version>
+            <version>${slf4j.version}</version>
             <scope>test</scope>
         </dependency>
 
@@ -242,6 +250,10 @@
             </plugins>
         </pluginManagement>
         <plugins>
+            <plugin>
+                <artifactId>maven-release-plugin</artifactId>
+                <version>2.5.3</version>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
