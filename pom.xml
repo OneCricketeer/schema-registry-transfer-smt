@@ -69,7 +69,7 @@
         <kafka.version>2.1.0</kafka.version>
         <confluent.version>5.1.0</confluent.version>
         <confluent.patch.version>-cp1</confluent.patch.version>
-        <jackson.version>2.9.7</jackson.version>
+        <jackson.version>2.9.10.1</jackson.version>
         <jackson.asl.version>1.9.13</jackson.asl.version>
 
         <spotless.version>1.19.0</spotless.version>
