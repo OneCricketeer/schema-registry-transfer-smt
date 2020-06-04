@@ -9,7 +9,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
-import io.confluent.kafka.serializers.AbstractKafkaSchemaSerDeConfig;
 import org.apache.kafka.common.cache.Cache;
 import org.apache.kafka.common.cache.LRUCache;
 import org.apache.kafka.common.cache.SynchronizedCache;
@@ -27,6 +26,7 @@ import org.slf4j.LoggerFactory;
 import io.confluent.kafka.schemaregistry.ParsedSchema;
 import io.confluent.kafka.schemaregistry.client.CachedSchemaRegistryClient;
 import io.confluent.kafka.schemaregistry.client.rest.exceptions.RestClientException;
+import io.confluent.kafka.serializers.AbstractKafkaSchemaSerDeConfig;
 import io.confluent.kafka.serializers.subject.TopicNameStrategy;
 import io.confluent.kafka.serializers.subject.strategy.SubjectNameStrategy;
 
