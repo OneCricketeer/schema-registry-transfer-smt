@@ -23,6 +23,7 @@ import org.apache.kafka.connect.transforms.util.SimpleConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.confluent.kafka.schemaregistry.ParsedSchema;
 import io.confluent.kafka.schemaregistry.client.CachedSchemaRegistryClient;
 import io.confluent.kafka.schemaregistry.client.rest.exceptions.RestClientException;
 import io.confluent.kafka.serializers.AbstractKafkaAvroSerDeConfig;
@@ -63,7 +64,7 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
 
     private CachedSchemaRegistryClient sourceSchemaRegistryClient;
     private CachedSchemaRegistryClient destSchemaRegistryClient;
-    private SubjectNameStrategy<org.apache.avro.Schema> subjectNameStrategy;
+    private SubjectNameStrategy subjectNameStrategy;
     private boolean transferKeys, includeHeaders;
 
     // caches from the source registry to the destination registry
@@ -213,7 +214,7 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
                 try {
                     log.trace("Looking up schema id {} in source registry", sourceSchemaId);
                     // Can't do getBySubjectAndId because that requires a Schema object for the strategy
-                    schemaAndDestId.schema = sourceSchemaRegistryClient.getById(sourceSchemaId);
+                    schemaAndDestId.schema = sourceSchemaRegistryClient.getSchemaById(sourceSchemaId);
                 } catch (IOException | RestClientException e) {
                     log.error(String.format("Unable to fetch source schema for id %d.", sourceSchemaId), e);
                     throw new ConnectException(e);
@@ -257,12 +258,12 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
 
     private static class SchemaAndId {
         private Integer id;
-        private org.apache.avro.Schema schema;
+        private ParsedSchema schema;
 
         SchemaAndId() {
         }
 
-        SchemaAndId(int id, org.apache.avro.Schema schema) {
+        SchemaAndId(int id, ParsedSchema schema) {
             this.id = id;
             this.schema = schema;
         }
