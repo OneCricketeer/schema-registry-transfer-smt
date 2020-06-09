@@ -16,6 +16,7 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.confluent.kafka.schemaregistry.avro.AvroSchema;
 import io.confluent.kafka.schemaregistry.client.CachedSchemaRegistryClient;
 import io.confluent.kafka.schemaregistry.client.MockSchemaRegistryClient;
 import io.confluent.kafka.schemaregistry.client.SchemaMetadata;
@@ -160,14 +161,14 @@ public class SchemaRegistryMock implements BeforeEachCallback, AfterEachCallback
         return this.registerSchema(topic, isKey, schema, new TopicNameStrategy());
     }
 
-    public int registerSchema(final String topic, boolean isKey, final Schema schema, SubjectNameStrategy<Schema> strategy) {
-        return this.register(strategy.subjectName(topic, isKey, schema), schema);
+    public int registerSchema(final String topic, boolean isKey, final Schema schema, SubjectNameStrategy strategy) {
+        return this.register(strategy.subjectName(topic, isKey, new AvroSchema(schema)), schema);
     }
 
     private int register(final String subject, final Schema schema) {
         try {
-            final int id = this.schemaRegistryClient.register(subject, schema);
-            this.stubFor.apply(WireMock.get(WireMock.urlEqualTo(SCHEMA_BY_ID_PATTERN + id))
+            final int id = this.schemaRegistryClient.register(subject, new AvroSchema(schema));
+            this.stubFor.apply(WireMock.get(WireMock.urlEqualTo(SCHEMA_BY_ID_PATTERN + id + "?fetchMaxId=false"))
                     .willReturn(ResponseDefinitionBuilder.okForJson(new SchemaString(schema.toString()))));
             log.debug("Registered schema {}", id);
             return id;
@@ -222,6 +223,8 @@ public class SchemaRegistryMock implements BeforeEachCallback, AfterEachCallback
     }
 
     private abstract class SubjectsVersioHandler extends ResponseDefinitionTransformer {
+        protected final Splitter questionMarkSplitter = Splitter.on('?').omitEmptyStrings();
+
         // Expected url pattern /subjects/.*-value/versions
         protected final Splitter urlSplitter = Splitter.on('/').omitEmptyStrings();
 
@@ -279,7 +282,8 @@ public class SchemaRegistryMock implements BeforeEachCallback, AfterEachCallback
         @Override
         public ResponseDefinition transform(final Request request, final ResponseDefinition responseDefinition,
                                             final FileSource files, final Parameters parameters) {
-            String versionStr = Iterables.get(this.urlSplitter.split(request.getUrl()), 3);
+            String lastStr = Iterables.get(this.urlSplitter.split(request.getUrl()), 3);
+            String versionStr = Iterables.get(this.questionMarkSplitter.split(lastStr), 0);
             SchemaMetadata metadata;
             if (versionStr.equals("latest")) {
                 metadata = SchemaRegistryMock.this.getSubjectVersion(getSubject(request), versionStr);

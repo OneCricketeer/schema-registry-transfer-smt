@@ -2,6 +2,9 @@
 package cricket.jmoore.kafka.connect.transforms;
 
 import static cricket.jmoore.kafka.connect.transforms.SchemaRegistryTransfer.ConfigName;
+import static org.apache.avro.Schema.Type.BOOLEAN;
+import static org.apache.avro.Schema.Type.INT;
+import static org.apache.avro.Schema.Type.STRING;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayOutputStream;
@@ -37,10 +40,6 @@ import io.confluent.kafka.schemaregistry.client.SchemaMetadata;
 import io.confluent.kafka.schemaregistry.client.SchemaRegistryClient;
 import io.confluent.kafka.schemaregistry.client.rest.exceptions.RestClientException;
 import io.confluent.kafka.serializers.NonRecordContainer;
-
-import static org.apache.avro.Schema.Type.INT;
-import static org.apache.avro.Schema.Type.BOOLEAN;
-import static org.apache.avro.Schema.Type.STRING;
 
 @SuppressWarnings("unchecked")
 public class TransformTest {
