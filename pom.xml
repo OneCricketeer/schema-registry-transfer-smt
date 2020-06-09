@@ -4,7 +4,7 @@
 
     <groupId>cricket.jmoore</groupId>
     <artifactId>schema-registry-transfer-smt</artifactId>
-    <version>0.2.1-SNAPSHOT</version>
+    <version>0.2.1</version>
     <name>schema-registry-transfer-smt</name>
     <description>
         A Kafka Connect Transform for copying Confluent Schema Registry schemas between different registries.
