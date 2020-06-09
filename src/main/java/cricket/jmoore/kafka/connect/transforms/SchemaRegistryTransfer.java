@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
+import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.cache.Cache;
 import org.apache.kafka.common.cache.LRUCache;
 import org.apache.kafka.common.cache.SynchronizedCache;
@@ -27,7 +28,9 @@ import io.confluent.kafka.schemaregistry.ParsedSchema;
 import io.confluent.kafka.schemaregistry.client.CachedSchemaRegistryClient;
 import io.confluent.kafka.schemaregistry.client.rest.exceptions.RestClientException;
 import io.confluent.kafka.serializers.AbstractKafkaSchemaSerDeConfig;
+import io.confluent.kafka.serializers.subject.RecordNameStrategy;
 import io.confluent.kafka.serializers.subject.TopicNameStrategy;
+import io.confluent.kafka.serializers.subject.TopicRecordNameStrategy;
 import io.confluent.kafka.serializers.subject.strategy.SubjectNameStrategy;
 
 @SuppressWarnings("unused")
@@ -56,6 +59,8 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
     public static final String DEST_BASIC_AUTH_CREDENTIALS_SOURCE_CONFIG_DEFAULT = AbstractKafkaSchemaSerDeConfig.BASIC_AUTH_CREDENTIALS_SOURCE_DEFAULT;
     public static final String DEST_USER_INFO_CONFIG_DOC = DEST_PREAMBLE + AbstractKafkaSchemaSerDeConfig.SCHEMA_REGISTRY_USER_INFO_DOC;
     public static final String DEST_USER_INFO_CONFIG_DEFAULT = AbstractKafkaSchemaSerDeConfig.SCHEMA_REGISTRY_USER_INFO_DEFAULT;
+    public static final String KEY_SUBJECT_NAME_STRATEGY_DEFAULT = TopicNameStrategy.class.getSimpleName();
+    public static final String VALUE_SUBJECT_NAME_STRATEGY_DEFAULT = TopicNameStrategy.class.getSimpleName();
 
     public static final String TRANSFER_KEYS_CONFIG_DOC = "Whether or not to copy message key schemas between registries.";
     public static final Boolean TRANSFER_KEYS_CONFIG_DEFAULT = true;
@@ -64,7 +69,8 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
 
     private CachedSchemaRegistryClient sourceSchemaRegistryClient;
     private CachedSchemaRegistryClient destSchemaRegistryClient;
-    private SubjectNameStrategy subjectNameStrategy;
+    private SubjectNameStrategy keySubjectNameStrategy;
+    private SubjectNameStrategy valueSubjectNameStrategy;
     private boolean transferKeys, includeHeaders;
 
     // caches from the source registry to the destination registry
@@ -84,8 +90,10 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
                 .define(ConfigName.SCHEMA_CAPACITY, ConfigDef.Type.INT, SCHEMA_CAPACITY_CONFIG_DEFAULT, ConfigDef.Importance.LOW, SCHEMA_CAPACITY_CONFIG_DOC)
                 .define(ConfigName.TRANSFER_KEYS, ConfigDef.Type.BOOLEAN, TRANSFER_KEYS_CONFIG_DEFAULT, ConfigDef.Importance.MEDIUM, TRANSFER_KEYS_CONFIG_DOC)
                 .define(ConfigName.INCLUDE_HEADERS, ConfigDef.Type.BOOLEAN, INCLUDE_HEADERS_CONFIG_DEFAULT, ConfigDef.Importance.MEDIUM, INCLUDE_HEADERS_CONFIG_DOC)
+                .define(ConfigName.KEY_SUBJECT_NAME_STRATEGY, ConfigDef.Type.STRING, KEY_SUBJECT_NAME_STRATEGY_DEFAULT, ConfigDef.Importance.MEDIUM, AbstractKafkaSchemaSerDeConfig.KEY_SUBJECT_NAME_STRATEGY_DOC)
+                .define(ConfigName.VALUE_SUBJECT_NAME_STRATEGY, ConfigDef.Type.STRING, KEY_SUBJECT_NAME_STRATEGY_DEFAULT, ConfigDef.Importance.MEDIUM, AbstractKafkaSchemaSerDeConfig.VALUE_SUBJECT_NAME_STRATEGY_DOC)
         ;
-        // TODO: Other properties might be useful, e.g. the Subject Strategies
+        // TODO: Other properties might be useful
     }
 
     @Override
@@ -122,9 +130,21 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
         this.transferKeys = config.getBoolean(ConfigName.TRANSFER_KEYS);
         this.includeHeaders = config.getBoolean(ConfigName.INCLUDE_HEADERS);
 
-        // TODO: Make the Strategy configurable, may be different for src and dest
-        // Strategy for the -key and -value subjects
-        this.subjectNameStrategy = new TopicNameStrategy();
+        // Strategy for the subjects
+        this.keySubjectNameStrategy = createSubjectStrategy(config.getString(ConfigName.KEY_SUBJECT_NAME_STRATEGY));
+        this.valueSubjectNameStrategy = createSubjectStrategy(config.getString(ConfigName.VALUE_SUBJECT_NAME_STRATEGY));
+    }
+
+    private SubjectNameStrategy createSubjectStrategy(String subjectStrategyName) {
+        if (TopicNameStrategy.class.getSimpleName().equals(subjectStrategyName)) {
+            return new TopicNameStrategy();
+        } else if (RecordNameStrategy.class.getSimpleName().equals(subjectStrategyName)) {
+            return new RecordNameStrategy();
+        } else if (TopicRecordNameStrategy.class.getSimpleName().equals(subjectStrategyName)) {
+            return new TopicRecordNameStrategy();
+        } else {
+            throw new KafkaException("Unknown Subject strategy name: " + subjectStrategyName);
+        }
     }
 
     @Override
@@ -222,8 +242,7 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
 
                 try {
                     log.trace("Registering schema {} to destination registry", schemaAndDestId.schema);
-                    // It could be possible that the destination naming strategy is different from the source
-                    String subjectName = subjectNameStrategy.subjectName(topic, isKey, schemaAndDestId.schema);
+                    String subjectName = isKey ? keySubjectNameStrategy.subjectName(topic, isKey, schemaAndDestId.schema) : valueSubjectNameStrategy.subjectName(topic, isKey, schemaAndDestId.schema);
                     schemaAndDestId.id = destSchemaRegistryClient.register(subjectName, schemaAndDestId.schema);
                     schemaCache.put(sourceSchemaId, schemaAndDestId);
                 } catch (IOException | RestClientException e) {
@@ -254,6 +273,8 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
         String SCHEMA_CAPACITY = "schema.capacity";
         String TRANSFER_KEYS = "transfer.message.keys";
         String INCLUDE_HEADERS = "include.message.headers";
+        String VALUE_SUBJECT_NAME_STRATEGY = AbstractKafkaSchemaSerDeConfig.VALUE_SUBJECT_NAME_STRATEGY;
+        String KEY_SUBJECT_NAME_STRATEGY = AbstractKafkaSchemaSerDeConfig.KEY_SUBJECT_NAME_STRATEGY;
     }
 
     private static class SchemaAndId {
