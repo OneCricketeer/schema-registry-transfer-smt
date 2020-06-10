@@ -64,8 +64,6 @@
         <confluent.version>5.5.0</confluent.version>
         <confluent.patch.version>-ce</confluent.patch.version>
         <jackson.version>2.10.2</jackson.version>
-<!--        <jackson.asl.version>1.9.13</jackson.asl.version>-->
-
         <spotless.version>1.19.0</spotless.version>
 
         <shade.prefix>cricket.jmoore</shade.prefix>
@@ -275,14 +273,6 @@
                         </filter>
                     </filters>
                     <relocations>
-<!--                        <relocation>-->
-<!--                            <pattern>io.confluent</pattern>-->
-<!--                            <shadedPattern>${shade.prefix}.confluent</shadedPattern>-->
-<!--                        </relocation>-->
-<!--                        <relocation>-->
-<!--                            <pattern>org.apache.avro</pattern>-->
-<!--                            <shadedPattern>${shade.prefix}.avro</shadedPattern>-->
-<!--                        </relocation>-->
                         <relocation>
                             <pattern>avro.shaded</pattern>
                             <shadedPattern>${shade.prefix}.avroshaded</shadedPattern>
