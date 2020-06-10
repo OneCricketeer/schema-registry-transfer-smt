@@ -216,7 +216,8 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
                     // Can't do getBySubjectAndId because that requires a Schema object for the strategy
 //                    schemaAndDestId.schema = sourceSchemaRegistryClient.getById(sourceSchemaId);
                     String subjectName = topic + (isKey ? "-key" : "-value");
-                    schemaAndDestId.schema = (org.apache.avro.Schema) sourceSchemaRegistryClient.getSchemaBySubjectAndId(subjectName, sourceSchemaId).rawSchema();
+                    AvroSchema ps = (AvroSchema) sourceSchemaRegistryClient.getSchemaBySubjectAndId(subjectName, sourceSchemaId);
+                    schemaAndDestId.schema = new org.apache.avro.Schema.Parser().parse(ps.toString());
                 } catch (IOException | RestClientException e) {
                     log.error(String.format("Unable to fetch source schema for id %d.", sourceSchemaId), e);
                     throw new ConnectException(e);
@@ -225,8 +226,9 @@ public class SchemaRegistryTransfer<R extends ConnectRecord<R>> implements Trans
                 try {
                     log.trace("Registering schema {} to destination registry", schemaAndDestId.schema);
                     // It could be possible that the destination naming strategy is different from the source
-                    String subjectName = subjectNameStrategy.subjectName(topic, isKey, new AvroSchema(schemaAndDestId.schema));
-                    schemaAndDestId.id = destSchemaRegistryClient.register(subjectName, schemaAndDestId.schema);
+                    AvroSchema avroSchema = new AvroSchema(schemaAndDestId.schema.toString());
+                    String subjectName = subjectNameStrategy.subjectName(topic, isKey, avroSchema);
+                    schemaAndDestId.id = destSchemaRegistryClient.register(subjectName, avroSchema);
                     schemaCache.put(sourceSchemaId, schemaAndDestId);
                 } catch (IOException | RestClientException e) {
                     log.error(String.format("Unable to register source schema id %d to destination registry.",
