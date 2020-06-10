@@ -62,8 +62,8 @@
 
         <kafka.version>2.4.1</kafka.version>
         <confluent.version>5.5.0</confluent.version>
-        <confluent.patch.version>-cp1</confluent.patch.version>
-        <jackson.version>2.10.4</jackson.version>
+        <confluent.patch.version>-ce</confluent.patch.version>
+        <jackson.version>2.10.2</jackson.version>
 <!--        <jackson.asl.version>1.9.13</jackson.asl.version>-->
 
         <spotless.version>1.19.0</spotless.version>
@@ -84,21 +84,21 @@
         <dependency>
             <groupId>org.apache.kafka</groupId>
             <artifactId>kafka-clients</artifactId>
-            <version>${kafka.version}</version>
+            <version>${confluent.version}${confluent.patch.version}</version>
             <scope>provided</scope>
         </dependency>
 
         <dependency>
             <groupId>org.apache.kafka</groupId>
             <artifactId>connect-transforms</artifactId>
-            <version>${kafka.version}</version>
+            <version>${confluent.version}${confluent.patch.version}</version>
             <scope>provided</scope>
         </dependency>
 
         <dependency>
             <groupId>org.apache.zookeeper</groupId>
             <artifactId>zookeeper</artifactId>
-            <version>3.5.8</version>
+            <version>3.5.7</version>
             <scope>provided</scope>
             <exclusions>
                 <exclusion>
@@ -130,19 +130,19 @@
             <scope>provided</scope>
         </dependency>
 
-<!--        <dependency>-->
-<!--            <groupId>org.codehaus.jackson</groupId>-->
-<!--            <artifactId>jackson-core-asl</artifactId>-->
-<!--            <version>${jackson.asl.version}</version>-->
-<!--            <scope>provided</scope>-->
-<!--        </dependency>-->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-core</artifactId>
+            <version>${jackson.version}</version>
+            <scope>provided</scope>
+        </dependency>
 
-<!--        <dependency>-->
-<!--            <groupId>org.codehaus.jackson</groupId>-->
-<!--            <artifactId>jackson-mapper-asl</artifactId>-->
-<!--            <version>${jackson.asl.version}</version>-->
-<!--            <scope>provided</scope>-->
-<!--        </dependency>-->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
+            <version>${jackson.version}</version>
+            <scope>provided</scope>
+        </dependency>
 
         <dependency>
             <groupId>com.thoughtworks.paranamer</groupId>
@@ -168,7 +168,7 @@
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-compress</artifactId>
-            <version>1.20</version>
+            <version>1.19</version>
             <scope>provided</scope>
         </dependency>
 
@@ -183,12 +183,27 @@
             <groupId>io.confluent</groupId>
             <artifactId>kafka-streams-avro-serde</artifactId>
             <version>${confluent.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.kafka</groupId>
+                    <artifactId>kafka-clients</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>io.confluent</groupId>
+                    <artifactId>kafka-schema-registry-client</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>com.fasterxml.jackson.core</groupId>
+                    <artifactId>jackson-databind</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <dependency>
             <groupId>io.confluent</groupId>
             <artifactId>kafka-schema-registry-client</artifactId>
             <version>${confluent.version}</version>
+            <scope>provided</scope>
             <exclusions>
                 <exclusion>
                     <groupId>org.apache.kafka</groupId>
@@ -260,14 +275,14 @@
                         </filter>
                     </filters>
                     <relocations>
-                        <relocation>
-                            <pattern>io.confluent</pattern>
-                            <shadedPattern>${shade.prefix}.confluent</shadedPattern>
-                        </relocation>
-                        <relocation>
-                            <pattern>org.apache.avro</pattern>
-                            <shadedPattern>${shade.prefix}.avro</shadedPattern>
-                        </relocation>
+<!--                        <relocation>-->
+<!--                            <pattern>io.confluent</pattern>-->
+<!--                            <shadedPattern>${shade.prefix}.confluent</shadedPattern>-->
+<!--                        </relocation>-->
+<!--                        <relocation>-->
+<!--                            <pattern>org.apache.avro</pattern>-->
+<!--                            <shadedPattern>${shade.prefix}.avro</shadedPattern>-->
+<!--                        </relocation>-->
                         <relocation>
                             <pattern>avro.shaded</pattern>
                             <shadedPattern>${shade.prefix}.avroshaded</shadedPattern>
