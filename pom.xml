@@ -72,7 +72,7 @@
         <jackson.version>2.9.7</jackson.version>
         <jackson.asl.version>1.9.13</jackson.asl.version>
 
-        <spotless.version>1.19.0</spotless.version>
+        <spotless.version>1.20.0</spotless.version>
 
         <shade.prefix>cricket.jmoore</shade.prefix>
     </properties>
