@@ -1,7 +1,5 @@
 Schema Registry Transfer SMT
 ============================
-[ ![Download](https://api.bintray.com/packages/cricket007/maven-releases/schema-registry-transfer-smt/images/download.svg) ](https://bintray.com/cricket007/maven-releases/schema-registry-transfer-smt/_latestVersion)&nbsp;
-[![CircleCI](https://circleci.com/gh/cricket007/schema-registry-transfer-smt.svg?style=svg)](https://circleci.com/gh/cricket007/schema-registry-transfer-smt)
 
 A [Kafka Connect Single Message Transformation (SMT)][smt] that reads the serialized [wire format header][wire-format] of Confluent's `KafkaAvroSerializer`, performs a lookup against a source [Confluent Schema Registry][schema-registry] for the ID in the message, and registers that schema into a destination Registry for that topic/subject under a new ID.
 
