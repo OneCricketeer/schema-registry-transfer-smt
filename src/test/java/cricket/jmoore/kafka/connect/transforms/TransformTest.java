@@ -36,10 +36,14 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.confluent.kafka.schemaregistry.ParsedSchema;
+import io.confluent.kafka.schemaregistry.avro.AvroSchema;
 import io.confluent.kafka.schemaregistry.client.SchemaMetadata;
 import io.confluent.kafka.schemaregistry.client.SchemaRegistryClient;
 import io.confluent.kafka.schemaregistry.client.rest.exceptions.RestClientException;
 import io.confluent.kafka.serializers.NonRecordContainer;
+import io.confluent.kafka.serializers.subject.RecordNameStrategy;
+import io.confluent.kafka.serializers.subject.TopicRecordNameStrategy;
 
 @SuppressWarnings("unchecked")
 public class TransformTest {
@@ -59,19 +63,24 @@ public class TransformTest {
     private static final byte MAGIC_BYTE = (byte) 0x0;
     public static final int ID_SIZE = Integer.SIZE / Byte.SIZE;
     private static final int AVRO_CONTENT_OFFSET = 1 + ID_SIZE;
-    public static final org.apache.avro.Schema INT_SCHEMA = org.apache.avro.Schema.create(INT);
-    public static final org.apache.avro.Schema STRING_SCHEMA = org.apache.avro.Schema.create(STRING);
-    public static final org.apache.avro.Schema BOOLEAN_SCHEMA = org.apache.avro.Schema.create(BOOLEAN);
-    public static final org.apache.avro.Schema NAME_SCHEMA = SchemaBuilder.record("FullName")
+    public static final AvroSchema INT_SCHEMA = new AvroSchema(org.apache.avro.Schema.create(INT));
+    public static final AvroSchema STRING_SCHEMA = new AvroSchema(org.apache.avro.Schema.create(STRING));
+    public static final AvroSchema BOOLEAN_SCHEMA = new AvroSchema(org.apache.avro.Schema.create(BOOLEAN));
+    public static final AvroSchema NAME_SCHEMA = new AvroSchema(SchemaBuilder.record("FullName")
             .namespace("cricket.jmoore.kafka.connect.transforms").fields()
             .requiredString("first")
             .requiredString("last")
-            .endRecord();
-    public static final org.apache.avro.Schema NAME_SCHEMA_ALIASED = SchemaBuilder.record("FullName")
+            .endRecord());
+    public static final AvroSchema NAME_SCHEMA_ALIASED = new AvroSchema(SchemaBuilder.record("FullName")
             .namespace("cricket.jmoore.kafka.connect.transforms").fields()
             .requiredString("first")
             .name("surname").aliases("last").type().stringType().noDefault()
-            .endRecord();
+            .endRecord());
+    public static final AvroSchema KEY_RECORD_SCHEMA = new AvroSchema(SchemaBuilder.record("Company")
+            .namespace("cricket.jmoore.kafka.connect.transforms").fields()
+            .requiredString("name")
+            .requiredString("address")
+            .endRecord());
 
     @RegisterExtension
     final SchemaRegistryMock sourceSchemaRegistry =
@@ -98,6 +107,13 @@ public class TransformTest {
         configs.put(ConfigName.SRC_SCHEMA_REGISTRY_URL, sourceSchemaRegistry.getUrl());
         configs.put(ConfigName.DEST_SCHEMA_REGISTRY_URL, destSchemaRegistry.getUrl());
         return configs;
+    }
+
+    private void configure(boolean copyKeys, String valueSubjectNameStrategy, String keySubjectNameStrategy) {
+        smtConfiguration.put(ConfigName.TRANSFER_KEYS, copyKeys);
+        smtConfiguration.put(ConfigName.VALUE_SUBJECT_NAME_STRATEGY, valueSubjectNameStrategy);
+        smtConfiguration.put(ConfigName.KEY_SUBJECT_NAME_STRATEGY, keySubjectNameStrategy);
+        smt.configure(smtConfiguration);
     }
 
     private void configure(boolean copyKeys) {
@@ -188,9 +204,9 @@ public class TransformTest {
         final int sourceValId = sourceSchemaRegistry.registerSchema(TOPIC, false, STRING_SCHEMA);
 
         final ByteArrayOutputStream keyOut =
-            encodeAvroObject(STRING_SCHEMA, sourceKeyId, HELLO_WORLD_VALUE);
+            encodeAvroObject(STRING_SCHEMA.rawSchema(), sourceKeyId, HELLO_WORLD_VALUE);
         final ByteArrayOutputStream valOut =
-            encodeAvroObject(STRING_SCHEMA, sourceValId, HELLO_WORLD_VALUE);
+            encodeAvroObject(STRING_SCHEMA.rawSchema(), sourceValId, HELLO_WORLD_VALUE);
         final ConnectRecord record =
             createRecord(keyOut.toByteArray(), valOut.toByteArray());
 
@@ -387,7 +403,7 @@ public class TransformTest {
         destSchemaRegistry.registerSchema(UUID.randomUUID().toString(), true, INT_SCHEMA);
 
         // Create new schema for source registry
-        org.apache.avro.Schema schema = STRING_SCHEMA;
+        AvroSchema schema = STRING_SCHEMA;
         log.info("Registering schema in source registry");
         int sourceId = sourceSchemaRegistry.registerSchema(TOPIC, true, schema);
         final String subject = TOPIC + "-key";
@@ -403,7 +419,7 @@ public class TransformTest {
         }
 
         try {
-            ByteArrayOutputStream out = encodeAvroObject(schema, sourceId, "hello, world");
+            ByteArrayOutputStream out = encodeAvroObject(schema.rawSchema(), sourceId, "hello, world");
 
             ConnectRecord record = createRecord(Schema.OPTIONAL_BYTES_SCHEMA, out.toByteArray(), null, null);
 
@@ -431,8 +447,8 @@ public class TransformTest {
                     "destination id should be different and higher since that registry already had schemas");
 
             // Verify the schema is the same
-            org.apache.avro.Schema sourceSchema = sourceClient.getById(sourceId);
-            org.apache.avro.Schema destSchema = new org.apache.avro.Schema.Parser().parse(metadata.getSchema());
+            ParsedSchema sourceSchema = sourceClient.getSchemaById(sourceId);
+            ParsedSchema destSchema = new AvroSchema(metadata.getSchema());
             assertEquals(schema, sourceSchema, "source server returned same schema");
             assertEquals(schema, destSchema, "destination server returned same schema");
             assertEquals(sourceSchema, destSchema, "both servers' schemas match");
@@ -450,7 +466,7 @@ public class TransformTest {
         destSchemaRegistry.registerSchema(UUID.randomUUID().toString(), false, INT_SCHEMA);
 
         // Create new schema for source registry
-        org.apache.avro.Schema schema = STRING_SCHEMA;
+        AvroSchema schema = STRING_SCHEMA;
         log.info("Registering schema in source registry");
         int sourceId = sourceSchemaRegistry.registerSchema(TOPIC, false, schema);
         final String subject = TOPIC + "-value";
@@ -469,7 +485,7 @@ public class TransformTest {
         ConnectRecord appliedRecord = null;
         int destinationId = -1;
         try {
-            ByteArrayOutputStream out = encodeAvroObject(schema, sourceId, "hello, world");
+            ByteArrayOutputStream out = encodeAvroObject(schema.rawSchema(), sourceId, "hello, world");
 
             value = out.toByteArray();
             ConnectRecord record = createRecord(null, value);
@@ -500,8 +516,8 @@ public class TransformTest {
                     "destination id should be different and higher since that registry already had schemas");
 
             // Verify the schema is the same
-            org.apache.avro.Schema sourceSchema = sourceClient.getById(sourceId);
-            org.apache.avro.Schema destSchema = new org.apache.avro.Schema.Parser().parse(metadata.getSchema());
+            ParsedSchema sourceSchema = sourceClient.getSchemaById(sourceId);
+            ParsedSchema destSchema = new AvroSchema(metadata.getSchema());
             assertEquals(schema, sourceSchema, "source server returned same schema");
             assertEquals(schema, destSchema, "destination server returned same schema");
             assertEquals(sourceSchema, destSchema, "both servers' schemas match");
@@ -531,8 +547,8 @@ public class TransformTest {
         destSchemaRegistry.registerSchema(UUID.randomUUID().toString(), false, BOOLEAN_SCHEMA);
 
         // Create new schemas for source registry
-        org.apache.avro.Schema keySchema = INT_SCHEMA;
-        org.apache.avro.Schema valueSchema = STRING_SCHEMA;
+        AvroSchema keySchema = INT_SCHEMA;
+        AvroSchema valueSchema = STRING_SCHEMA;
         log.info("Registering schemas in source registry");
         int sourceKeyId = sourceSchemaRegistry.registerSchema(TOPIC, true, keySchema);
         final String keySubject = TOPIC + "-key";
@@ -559,8 +575,8 @@ public class TransformTest {
         int destinationKeyId = -1;
         int destinationValueId = -1;
         try {
-            ByteArrayOutputStream keyStream = encodeAvroObject(keySchema, sourceKeyId, AVRO_CONTENT_OFFSET);
-            ByteArrayOutputStream valueStream = encodeAvroObject(valueSchema, sourceValueId, "hello, world");
+            ByteArrayOutputStream keyStream = encodeAvroObject(keySchema.rawSchema(), sourceKeyId, AVRO_CONTENT_OFFSET);
+            ByteArrayOutputStream valueStream = encodeAvroObject(valueSchema.rawSchema(), sourceValueId, "hello, world");
 
             key = keyStream.toByteArray();
             value = valueStream.toByteArray();
@@ -601,13 +617,13 @@ public class TransformTest {
                     "destination id should be different and higher since that registry already had schemas");
 
             // Verify the schemas are the same
-            org.apache.avro.Schema sourceKeySchema = sourceClient.getById(sourceKeyId);
-            org.apache.avro.Schema destKeySchema = new org.apache.avro.Schema.Parser().parse(keyMetadata.getSchema());
+            ParsedSchema sourceKeySchema = sourceClient.getSchemaById(sourceKeyId);
+            ParsedSchema destKeySchema = new AvroSchema(keyMetadata.getSchema());
             assertEquals(destKeySchema, sourceKeySchema, "source server returned same key schema");
             assertEquals(keySchema, destKeySchema, "destination server returned same key schema");
             assertEquals(sourceKeySchema, destKeySchema, "both servers' key schemas match");
-            org.apache.avro.Schema sourceValueSchema = sourceClient.getById(sourceValueId);
-            org.apache.avro.Schema destValueSchema = new org.apache.avro.Schema.Parser().parse(valueMetadata.getSchema());
+            ParsedSchema sourceValueSchema = sourceClient.getSchemaById(sourceValueId);
+            ParsedSchema destValueSchema = new AvroSchema(valueMetadata.getSchema());
             assertEquals(destValueSchema, sourceValueSchema, "source server returned same value schema");
             assertEquals(valueSchema, destValueSchema, "destination server returned same value schema");
             assertEquals(sourceValueSchema, destValueSchema, "both servers' value schemas match");
@@ -679,20 +695,20 @@ public class TransformTest {
         }
 
         try {
-            GenericData.Record record1 = new GenericRecordBuilder(NAME_SCHEMA)
+            GenericData.Record record1 = new GenericRecordBuilder(NAME_SCHEMA.rawSchema())
                     .set("first", "fname")
                     .set("last", "lname")
                     .build();
-            ByteArrayOutputStream out = encodeAvroObject(NAME_SCHEMA, sourceId, record1);
+            ByteArrayOutputStream out = encodeAvroObject(NAME_SCHEMA.rawSchema(), sourceId, record1);
 
             byte[] value = out.toByteArray();
             ConnectRecord record = createRecord(null, value);
 
-            GenericData.Record record2 = new GenericRecordBuilder(NAME_SCHEMA_ALIASED)
+            GenericData.Record record2 = new GenericRecordBuilder(NAME_SCHEMA_ALIASED.rawSchema())
                     .set("first", "fname")
                     .set("surname", "lname")
                     .build();
-            out = encodeAvroObject(NAME_SCHEMA_ALIASED, nextSourceId, record2);
+            out = encodeAvroObject(NAME_SCHEMA_ALIASED.rawSchema(), nextSourceId, record2);
 
             byte[] nextValue = out.toByteArray();
             ConnectRecord nextRecord = createRecord(null, nextValue);
@@ -736,8 +752,8 @@ public class TransformTest {
         log.info("Registering schema in source registry");
 
         // TODO: Figure out what these should be, where if order is flipped, destination will not accept
-        org.apache.avro.Schema schema = null;
-        org.apache.avro.Schema nextSchema = null;
+        AvroSchema schema = null;
+        AvroSchema nextSchema = null;
 
         int sourceId = sourceSchemaRegistry.registerSchema(TOPIC, false, schema);
         int nextSourceId = sourceSchemaRegistry.registerSchema(TOPIC, false, nextSchema);
@@ -757,12 +773,12 @@ public class TransformTest {
         try {
             // TODO: Depending on schemas above, then build Avro records for them
             // ensure second id is encoded first
-            ByteArrayOutputStream out = encodeAvroObject(nextSchema, nextSourceId, null);
+            ByteArrayOutputStream out = encodeAvroObject(nextSchema.rawSchema(), nextSourceId, null);
 
             byte[] value = out.toByteArray();
             ConnectRecord record = createRecord(null, value);
 
-            out = encodeAvroObject(schema, sourceId, null);
+            out = encodeAvroObject(schema.rawSchema(), sourceId, null);
 
             byte[] nextValue = out.toByteArray();
             ConnectRecord nextRecord = createRecord(null, nextValue);
@@ -788,4 +804,143 @@ public class TransformTest {
             fail(e);
         }
     }
+
+    @Test
+    public void testRecordNameSubjectStrategy() {
+        configure(true, RecordNameStrategy.class.getSimpleName(), RecordNameStrategy.class.getSimpleName());
+
+        // Create bogus schema in destination so that source and destination ids differ
+        log.info("Registering schema in destination registry");
+        destSchemaRegistry.registerSchema(UUID.randomUUID().toString(), false, BOOLEAN_SCHEMA);
+
+        // Create new schemas for source registry
+        AvroSchema keySchema = KEY_RECORD_SCHEMA;
+        AvroSchema valueSchema = NAME_SCHEMA;
+
+        //key subject in destination schema registry is record name, NOT default topicName-key
+        String destKeySubject = keySchema.name();
+        //value subject in destination schema registry is record name, NOT default topicName-value
+        String destValueSubject = valueSchema.name();
+
+        registerAndApplyTransformation(keySchema, valueSchema, destKeySubject, destValueSubject);
+    }
+
+    @Test
+    public void testTopicRecordNameSubjectStrategy() {
+        configure(true, TopicRecordNameStrategy.class.getSimpleName(), TopicRecordNameStrategy.class.getSimpleName());
+
+        // Create bogus schema in destination so that source and destination ids differ
+        log.info("Registering schema in destination registry");
+        destSchemaRegistry.registerSchema(UUID.randomUUID().toString(), false, BOOLEAN_SCHEMA);
+
+        // Create new schemas for source registry
+        AvroSchema keySchema = KEY_RECORD_SCHEMA;
+        AvroSchema valueSchema = NAME_SCHEMA;
+
+        //key subject in destination schema registry is topic-record name, NOT default topicName-key
+        String destKeySubject = TOPIC + "-" + keySchema.name();
+        //value subject in destination schema registry is topic-record name, NOT default topicName-value
+        String destValueSubject = TOPIC + "-" + valueSchema.name();
+
+        registerAndApplyTransformation(keySchema, valueSchema, destKeySubject, destValueSubject);
+    }
+
+    private void registerAndApplyTransformation(AvroSchema keySchema, AvroSchema valueSchema, String destKeySubject, String destValueSubject) {
+        log.info("Registering schemas in source registry");
+        int sourceKeyId = sourceSchemaRegistry.registerSchema(TOPIC, true, keySchema);
+        final String keySubject = TOPIC + "-key";
+        assertEquals(1, sourceKeyId, "An empty registry starts at id=1");
+        int sourceValueId = sourceSchemaRegistry.registerSchema(TOPIC, false, valueSchema);
+        final String valueSubject = TOPIC + "-value";
+        assertEquals(2, sourceValueId, "unique schema ids monotonically increase");
+
+        SchemaRegistryClient sourceClient = sourceSchemaRegistry.getSchemaRegistryClient();
+        int numSourceKeyVersions = 0;
+        int numSourceValueVersions = 0;
+        try {
+            numSourceKeyVersions = sourceClient.getAllVersions(keySubject).size();
+            assertEquals(1, numSourceKeyVersions, "the source registry subject contains the pre-registered key schema");
+            numSourceValueVersions = sourceClient.getAllVersions(valueSubject).size();
+            assertEquals(1, numSourceValueVersions, "the source registry subject contains the pre-registered value schema");
+        } catch (IOException | RestClientException e) {
+            fail(e);
+        }
+
+        byte[] key;
+        byte[] value;
+        ConnectRecord appliedRecord;
+        int destinationKeyId;
+        int destinationValueId;
+        try {
+
+            GenericData.Record keyRecord = new GenericRecordBuilder(KEY_RECORD_SCHEMA.rawSchema())
+                    .set("name", "cName")
+                    .set("address", "cAddress")
+                    .build();
+
+            GenericData.Record valueRecord = new GenericRecordBuilder(NAME_SCHEMA.rawSchema())
+                    .set("first", "fname")
+                    .set("last", "lname")
+                    .build();
+
+            ByteArrayOutputStream keyStream = encodeAvroObject(keySchema.rawSchema(), sourceKeyId, keyRecord);
+            ByteArrayOutputStream valueStream = encodeAvroObject(valueSchema.rawSchema(), sourceValueId, valueRecord);
+
+            key = keyStream.toByteArray();
+            value = valueStream.toByteArray();
+            ConnectRecord record = createRecord(key, value);
+
+            // check the destination has no versions for this subject
+            SchemaRegistryClient destClient = destSchemaRegistry.getSchemaRegistryClient();
+            List<Integer> destKeyVersions = destClient.getAllVersions(destKeySubject);
+            assertTrue(destKeyVersions.isEmpty(), "the destination registry starts empty");
+            List<Integer> destValueVersions = destClient.getAllVersions(destValueSubject);
+            assertTrue(destValueVersions.isEmpty(), "the destination registry starts empty");
+
+            // The transform will pass for key and value with byte schemas
+            log.info("applying transformation");
+            appliedRecord = assertDoesNotThrow(() -> smt.apply(record));
+
+            assertEquals(record.keySchema(), appliedRecord.keySchema(), "key schema unchanged");
+            assertEquals(record.valueSchema(), appliedRecord.valueSchema(), "value schema unchanged");
+
+            // check the value schema was copied, and the destination now has some version
+            destKeyVersions = destClient.getAllVersions(destKeySubject);
+            assertEquals(numSourceKeyVersions, destKeyVersions.size(),
+                    "source and destination registries have the same amount of schemas for the key subject");
+            destValueVersions = destClient.getAllVersions(destValueSubject);
+            assertEquals(numSourceValueVersions, destValueVersions.size(),
+                    "source and destination registries have the same amount of schemas for the value subject");
+
+            // Verify that the ids for the source and destination are different
+            SchemaMetadata keyMetadata = destClient.getSchemaMetadata(destKeySubject, destKeyVersions.get(0));
+            destinationKeyId = keyMetadata.getId();
+            log.debug("source_keyId={} ; dest_keyId={}", sourceKeyId, destinationKeyId);
+            assertTrue(sourceKeyId < destinationKeyId,
+                    "destination id should be different and higher since that registry already had schemas");
+            SchemaMetadata valueMetadata = destClient.getSchemaMetadata(destValueSubject, destValueVersions.get(0));
+            destinationValueId = valueMetadata.getId();
+            log.debug("source_valueId={} ; dest_valueId={}", sourceValueId, destinationValueId);
+            assertTrue(sourceValueId < destinationValueId,
+                    "destination id should be different and higher since that registry already had schemas");
+
+            // Verify the schemas are the same
+            ParsedSchema sourceKeySchema = sourceClient.getSchemaById(sourceKeyId);
+            ParsedSchema destKeySchema = new AvroSchema(keyMetadata.getSchema());
+
+            assertEquals(destKeySchema, sourceKeySchema, "source server returned same key schema");
+            assertEquals(keySchema, destKeySchema, "destination server returned same key schema");
+            assertEquals(sourceKeySchema, destKeySchema, "both servers' key schemas match");
+            ParsedSchema sourceValueSchema = sourceClient.getSchemaById(sourceValueId);
+            ParsedSchema destValueSchema = new AvroSchema(valueMetadata.getSchema());
+            assertEquals(destValueSchema, sourceValueSchema, "source server returned same value schema");
+            assertEquals(valueSchema, destValueSchema, "destination server returned same value schema");
+            assertEquals(sourceValueSchema, destValueSchema, "both servers' value schemas match");
+
+        } catch (IOException | RestClientException e) {
+            fail(e);
+        }
+    }
+
+
 }

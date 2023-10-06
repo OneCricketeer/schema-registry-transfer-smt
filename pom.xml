@@ -4,7 +4,7 @@
 
     <groupId>cricket.jmoore</groupId>
     <artifactId>schema-registry-transfer-smt</artifactId>
-    <version>0.2.1-SNAPSHOT</version>
+    <version>0.2.1</version>
     <name>schema-registry-transfer-smt</name>
     <description>
         A Kafka Connect Transform for copying Confluent Schema Registry schemas between different registries.
@@ -66,11 +66,10 @@
         <maven.compiler.target>1.8</maven.compiler.target>
 
         <slf4j.version>1.7.25</slf4j.version>
-        <kafka.version>2.1.0</kafka.version>
-        <confluent.version>5.1.0</confluent.version>
-        <confluent.patch.version>-cp1</confluent.patch.version>
-        <jackson.version>2.9.7</jackson.version>
-        <jackson.asl.version>1.9.13</jackson.asl.version>
+        <confluent.version>5.5.0</confluent.version>
+        <jackson.version>2.10.2</jackson.version>
+        <avro.version>1.9.2</avro.version>
+        <jersey.bean.validation.version>2.30</jersey.bean.validation.version>
 
         <spotless.version>1.20.0</spotless.version>
 
@@ -90,14 +89,14 @@
         <dependency>
             <groupId>org.apache.kafka</groupId>
             <artifactId>kafka-clients</artifactId>
-            <version>${kafka.version}${confluent.patch.version}</version>
+            <version>${confluent.version}-ccs</version>
             <scope>provided</scope>
         </dependency>
 
         <dependency>
             <groupId>org.apache.kafka</groupId>
             <artifactId>connect-transforms</artifactId>
-            <version>${kafka.version}${confluent.patch.version}</version>
+            <version>${confluent.version}-ccs</version>
             <scope>provided</scope>
         </dependency>
 
@@ -123,13 +122,6 @@
         </dependency>
 
         <dependency>
-            <groupId>com.101tec</groupId>
-            <artifactId>zkclient</artifactId>
-            <version>0.10</version>
-            <scope>provided</scope>
-        </dependency>
-
-        <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
             <version>${jackson.version}</version>
@@ -137,16 +129,16 @@
         </dependency>
 
         <dependency>
-            <groupId>org.codehaus.jackson</groupId>
-            <artifactId>jackson-core-asl</artifactId>
-            <version>${jackson.asl.version}</version>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-core</artifactId>
+            <version>${jackson.version}</version>
             <scope>provided</scope>
         </dependency>
 
         <dependency>
-            <groupId>org.codehaus.jackson</groupId>
-            <artifactId>jackson-mapper-asl</artifactId>
-            <version>${jackson.asl.version}</version>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
+            <version>${jackson.version}</version>
             <scope>provided</scope>
         </dependency>
 
@@ -178,11 +170,18 @@
             <scope>provided</scope>
         </dependency>
 
+        <dependency>
+            <groupId>org.glassfish.jersey.ext</groupId>
+            <artifactId>jersey-bean-validation</artifactId>
+            <version>${jersey.bean.validation.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
         <!-- Runtime dependencies -->
         <dependency>
             <groupId>org.apache.avro</groupId>
             <artifactId>avro</artifactId>
-            <version>1.8.1</version>
+            <version>${avro.version}</version>
         </dependency>
 
         <dependency>
@@ -201,8 +200,16 @@
                     <artifactId>kafka-clients</artifactId>
                 </exclusion>
                 <exclusion>
-                    <groupId>com.fasterxml.jackson.core</groupId>
-                    <artifactId>jackson-databind</artifactId>
+                    <groupId>io.swagger</groupId>
+                    <artifactId>swagger-annotations</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>io.swagger</groupId>
+                    <artifactId>swagger-core</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.glassfish.jersey.ext</groupId>
+                    <artifactId>jersey-bean-validation</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
