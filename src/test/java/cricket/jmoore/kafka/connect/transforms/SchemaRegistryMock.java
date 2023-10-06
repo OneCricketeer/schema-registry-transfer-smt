@@ -16,6 +16,8 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.confluent.kafka.schemaregistry.ParsedSchema;
+import io.confluent.kafka.schemaregistry.avro.AvroSchema;
 import io.confluent.kafka.schemaregistry.client.CachedSchemaRegistryClient;
 import io.confluent.kafka.schemaregistry.client.MockSchemaRegistryClient;
 import io.confluent.kafka.schemaregistry.client.SchemaMetadata;
@@ -152,22 +154,22 @@ public class SchemaRegistryMock implements BeforeEachCallback, AfterEachCallback
                 .willReturn(WireMock.aResponse().withTransformers(this.getVersionHandler.getName())));
         this.stubFor.apply(WireMock.get(WireMock.urlPathMatching(CONFIG_PATTERN))
                 .willReturn(WireMock.aResponse().withTransformers(this.getConfigHandler.getName())));
-        this.stubFor.apply(WireMock.get(WireMock.urlPathMatching(SCHEMA_BY_ID_PATTERN + "\\d+"))
+        this.stubFor.apply(WireMock.get(WireMock.urlPathMatching(SCHEMA_BY_ID_PATTERN + "\\d+/(?:fetchMaxId=false)"))
                 .willReturn(WireMock.aResponse().withStatus(HTTP_NOT_FOUND)));
     }
 
-    public int registerSchema(final String topic, boolean isKey, final Schema schema) {
+    public int registerSchema(final String topic, boolean isKey, final ParsedSchema schema) {
         return this.registerSchema(topic, isKey, schema, new TopicNameStrategy());
     }
 
-    public int registerSchema(final String topic, boolean isKey, final Schema schema, SubjectNameStrategy<Schema> strategy) {
+    public int registerSchema(final String topic, boolean isKey, final ParsedSchema schema, SubjectNameStrategy strategy) {
         return this.register(strategy.subjectName(topic, isKey, schema), schema);
     }
 
-    private int register(final String subject, final Schema schema) {
+    private int register(final String subject, final ParsedSchema schema) {
         try {
             final int id = this.schemaRegistryClient.register(subject, schema);
-            this.stubFor.apply(WireMock.get(WireMock.urlEqualTo(SCHEMA_BY_ID_PATTERN + id))
+            this.stubFor.apply(WireMock.get(WireMock.urlEqualTo(SCHEMA_BY_ID_PATTERN + id + "?fetchMaxId=false"))
                     .willReturn(ResponseDefinitionBuilder.okForJson(new SchemaString(schema.toString()))));
             log.debug("Registered schema {}", id);
             return id;
@@ -242,8 +244,8 @@ public class SchemaRegistryMock implements BeforeEachCallback, AfterEachCallback
                                             final FileSource files, final Parameters parameters) {
             try {
                 final int id = SchemaRegistryMock.this.register(getSubject(request),
-                        new Schema.Parser()
-                                .parse(RegisterSchemaRequest.fromJson(request.getBodyAsString()).getSchema()));
+                        new AvroSchema(new Schema.Parser()
+                                .parse(RegisterSchemaRequest.fromJson(request.getBodyAsString()).getSchema())));
                 final RegisterSchemaResponse registerSchemaResponse = new RegisterSchemaResponse();
                 registerSchemaResponse.setId(id);
                 return ResponseDefinitionBuilder.jsonResponse(registerSchemaResponse);
@@ -279,7 +281,8 @@ public class SchemaRegistryMock implements BeforeEachCallback, AfterEachCallback
         @Override
         public ResponseDefinition transform(final Request request, final ResponseDefinition responseDefinition,
                                             final FileSource files, final Parameters parameters) {
-            String versionStr = Iterables.get(this.urlSplitter.split(request.getUrl()), 3);
+            String versionStrFull = Iterables.get(this.urlSplitter.split(request.getUrl()), 3);
+            String versionStr = versionStrFull.substring(0, versionStrFull.indexOf("?"));
             SchemaMetadata metadata;
             if (versionStr.equals("latest")) {
                 metadata = SchemaRegistryMock.this.getSubjectVersion(getSubject(request), versionStr);
