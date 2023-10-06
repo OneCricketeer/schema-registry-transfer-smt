@@ -71,7 +71,7 @@
         <avro.version>1.9.2</avro.version>
         <jersey.bean.validation.version>2.30</jersey.bean.validation.version>
 
-        <spotless.version>1.19.0</spotless.version>
+        <spotless.version>1.20.0</spotless.version>
 
         <shade.prefix>cricket.jmoore</shade.prefix>
     </properties>
